@@ -1,0 +1,1 @@
+nodes=1328518 directed_edges=2671028 route_m=185094 route_edges=2937 nearest_driver=975

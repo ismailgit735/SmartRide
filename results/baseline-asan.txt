@@ -1,0 +1,2 @@
+Test project /Users/rmohamedismail/SmartRide/build-asan
+    Start 1: correctness

@@ -1,0 +1,10 @@
+Initial inspection: 2026-10-02, Asia/Kolkata
+macOS 26.5.2 (25F84), Darwin 25.5.0, arm64
+Model Mac15,12; 8 logical CPUs; RAM 8589934592 bytes (8 GiB)
+Filesystem /dev/disk3s5: total 228 GiB, available 26 GiB initially
+Apple clang version 17.0.0 (clang-1700.6.3.2)
+Target arm64-apple-darwin25.5.0
+Git 2.50.1 (Apple Git-155)
+CMake 4.4.3 (installed into project .venv)
+Python 3.12; dependency versions in requirements-lock.txt
+Hardware query required permission. No system-wide dependencies installed.

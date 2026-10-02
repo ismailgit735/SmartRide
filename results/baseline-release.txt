@@ -1,0 +1,16 @@
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/rmohamedismail/SmartRide/build
+[ 50%] Built target smartride
+[ 62%] Building CXX object CMakeFiles/smartride_tests.dir/tests/test.cpp.o
+[ 87%] Built target smartride_cli
+[100%] Linking CXX executable smartride_tests
+[100%] Built target smartride_tests
+Test project /Users/rmohamedismail/SmartRide/build
+    Start 1: correctness
+1/1 Test #1: correctness ......................   Passed    0.53 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   0.53 sec
+OSM profile and real parser fixture tests passed

@@ -1,0 +1,8 @@
+.venv/
+build*/
+data/*.pbf
+data/*.srg
+data/*.tmp
+__pycache__/
+*.wal
+.DS_Store

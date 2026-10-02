@@ -1,0 +1,12 @@
+{
+  "accepted_ways": 181565,
+  "directed_edges": 2671028,
+  "unsupported_turn_restriction_relations": 1927,
+  "nodes": 1328518,
+  "seconds": 29.389741042046808,
+  "input": "data/estonia.osm.pbf",
+  "input_sha256": "e1244c3edf9bd9c10a1cd43d57b4bcb1cba37f9fef0250c473caf7cc339eda1e",
+  "output_sha256": "f44e008b9131a7955e61499b7759b34e9a5910837b34797614a264a81fce741d",
+  "attribution": "\u00a9 OpenStreetMap contributors, ODbL 1.0; extract by Geofabrik",
+  "source": "https://download.geofabrik.de/europe/estonia-latest.osm.pbf"
+}

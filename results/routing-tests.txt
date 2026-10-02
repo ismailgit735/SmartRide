@@ -1,0 +1,13 @@
+Test project /Users/rmohamedismail/SmartRide/build
+    Start 1: correctness
+1/2 Test #1: correctness ......................   Passed    1.06 sec
+    Start 2: routing
+2/2 Test #2: routing ..........................***Timeout 120.29 sec
+
+
+50% tests passed, 1 tests failed out of 2
+
+Total Test time (real) = 121.41 sec
+
+The following tests FAILED:
+	  2 - routing (Timeout)
