@@ -1,5 +1,6 @@
 #pragma once
 #include "graph.hpp"
+#include <cstddef>
 namespace sr {
 struct Driver { uint32_t id; Point position; bool available=true; };
 uint32_t nearest_driver(const std::vector<Driver>& drivers, Point request);
@@ -23,6 +24,22 @@ std::vector<Assignment> greedy_batch_brute_force(
 std::vector<Assignment> greedy_batch_spatial(
     std::vector<Driver>& drivers, const std::vector<RideRequest>& requests,
     double cell_size = 0.0);
+
+constexpr size_t kMaxHungarianRequests = 64;
+constexpr size_t kMaxHungarianAvailableDrivers = 512;
+struct HungarianOptions {
+    size_t max_requests = kMaxHungarianRequests;
+    size_t max_available_drivers = kMaxHungarianAvailableDrivers;
+};
+// Exact min-cost assignment of the supplied batch: max matched cardinality,
+// then min total Euclidean pickup. Available drivers are sorted by ID; request
+// input order is the row order. Hard limits are 64 requests and 512 available
+// drivers; options may only tighten those caps. Oversized batches throw before
+// mutation. The complete matching is computed before any reservation. Unmatched
+// results use invalid/inf. No greedy fallback. Single-threaded; Euclidean cost.
+std::vector<Assignment> hungarian_batch(
+    std::vector<Driver>& drivers, const std::vector<RideRequest>& requests,
+    HungarianOptions options = {});
 
 class SpatialGrid {
     const std::vector<Driver>& drivers_;

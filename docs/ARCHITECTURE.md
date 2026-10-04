@@ -16,6 +16,19 @@ The baseline uses Dijkstra as a reference oracle. Unreachable distance is
 infinity with an empty path. A zero-length source-to-self route is valid.
 Driver simulation samples graph nodes with a recorded mt19937_64 seed.
 
+## Matching
+
+Nearest dispatch is Euclidean. `SpatialGrid` indexes drivers for single-request
+nearest lookup. Greedy batch APIs (`greedy_batch_brute_force`,
+`greedy_batch_spatial`) process requests in input order and reserve each winner
+immediately. `hungarian_batch` solves an exact rectangular Kuhn–Munkres
+assignment over at most 64 requests and 512 available drivers: maximum matched
+cardinality, then minimum total Euclidean pickup. Available drivers are sorted
+by ID; request order is the matrix row order. Validation and the full matching
+complete before any availability change. Options may only tighten the hard
+caps; oversized batches throw. Unmatched results use `invalid` and infinite
+distance. Pickup cost is straight-line meters, not routed pickup.
+
 ## Planned routing invariants
 
 A* uses a consistent scaled Euclidean lower bound. For bidirectional A*, use

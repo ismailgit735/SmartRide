@@ -1,6 +1,7 @@
 #include "smartride/matching.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <unordered_map>
@@ -177,6 +178,83 @@ std::vector<Assignment> assign_batch(std::vector<Driver>& drivers,
     }
     return result;
 }
+
+void validate_hungarian_options(HungarianOptions options) {
+    if (options.max_requests == 0 ||
+        options.max_requests > kMaxHungarianRequests ||
+        options.max_available_drivers == 0 ||
+        options.max_available_drivers > kMaxHungarianAvailableDrivers)
+        throw std::invalid_argument("invalid hungarian options");
+}
+
+// Rectangular Kuhn-Munkres for min-cost assignment with rows <= cols.
+// cost[i * cols + j] is the cost of row i to column j. Equal reduced costs keep
+// the earlier column (lower driver ID after sorting).
+std::vector<size_t> kuhn_munkres(size_t rows, size_t cols, const std::vector<double>& cost) {
+    std::vector<double> u(rows + 1), v(cols + 1);
+    std::vector<int> p(cols + 1), way(cols + 1);
+    for (size_t i = 1; i <= rows; ++i) {
+        p[0] = static_cast<int>(i);
+        int j0 = 0;
+        std::vector<double> minv(cols + 1, inf);
+        std::vector<char> used(cols + 1, 0);
+        do {
+            used[static_cast<size_t>(j0)] = 1;
+            const int i0 = p[static_cast<size_t>(j0)];
+            double delta = inf;
+            int j1 = 0;
+            for (size_t j = 1; j <= cols; ++j) {
+                if (used[j]) continue;
+                const double cur = cost[static_cast<size_t>(i0 - 1) * cols + (j - 1)]
+                    - u[static_cast<size_t>(i0)] - v[j];
+                if (cur < minv[j]) {
+                    minv[j] = cur;
+                    way[j] = j0;
+                }
+                if (minv[j] < delta) {
+                    delta = minv[j];
+                    j1 = static_cast<int>(j);
+                }
+            }
+            for (size_t j = 0; j <= cols; ++j) {
+                if (used[j]) {
+                    u[static_cast<size_t>(p[j])] += delta;
+                    v[j] -= delta;
+                } else {
+                    minv[j] -= delta;
+                }
+            }
+            j0 = j1;
+        } while (p[static_cast<size_t>(j0)] != 0);
+        do {
+            const int j1 = way[static_cast<size_t>(j0)];
+            p[static_cast<size_t>(j0)] = p[static_cast<size_t>(j1)];
+            j0 = j1;
+        } while (j0);
+    }
+    std::vector<size_t> col_of_row(rows, static_cast<size_t>(-1));
+    for (size_t j = 1; j <= cols; ++j)
+        if (p[j] != 0)
+            col_of_row[static_cast<size_t>(p[j] - 1)] = j - 1;
+    return col_of_row;
+}
+
+std::vector<size_t> min_cost_assignment(size_t rows, size_t cols, const std::vector<double>& cost) {
+    if (rows == 0 || cols == 0)
+        return std::vector<size_t>(rows, static_cast<size_t>(-1));
+    if (rows <= cols)
+        return kuhn_munkres(rows, cols, cost);
+    std::vector<double> transposed(cols * rows);
+    for (size_t i = 0; i < rows; ++i)
+        for (size_t j = 0; j < cols; ++j)
+            transposed[j * rows + i] = cost[i * cols + j];
+    const auto row_of_col = kuhn_munkres(cols, rows, transposed);
+    std::vector<size_t> col_of_row(rows, static_cast<size_t>(-1));
+    for (size_t j = 0; j < cols; ++j)
+        if (row_of_col[j] != static_cast<size_t>(-1))
+            col_of_row[row_of_col[j]] = j;
+    return col_of_row;
+}
 }
 
 std::vector<Assignment> greedy_batch_brute_force(std::vector<Driver>& drivers,
@@ -194,6 +272,49 @@ std::vector<Assignment> greedy_batch_spatial(std::vector<Driver>& drivers,
     SpatialGrid grid(drivers, cell_size);
     return assign_batch(drivers, requests, indices,
         [&](Point p) { return grid.nearest_driver(p); });
+}
+
+std::vector<Assignment> hungarian_batch(std::vector<Driver>& drivers,
+    const std::vector<RideRequest>& requests, HungarianOptions options) {
+    [[maybe_unused]] const auto indices = validate_batch(drivers, requests);
+    validate_hungarian_options(options);
+    if (requests.size() > options.max_requests)
+        throw std::invalid_argument("hungarian request limit exceeded");
+    std::vector<size_t> available;
+    available.reserve(drivers.size());
+    for (size_t i = 0; i < drivers.size(); ++i)
+        if (drivers[i].available) available.push_back(i);
+    if (available.size() > options.max_available_drivers)
+        throw std::invalid_argument("hungarian available driver limit exceeded");
+
+    std::vector<Assignment> result;
+    result.reserve(requests.size());
+    for (const auto& request : requests)
+        result.push_back(Assignment{request.id});
+    if (requests.empty() || available.empty())
+        return result;
+
+    std::sort(available.begin(), available.end(),
+        [&](size_t a, size_t b) { return drivers[a].id < drivers[b].id; });
+    const size_t rows = requests.size();
+    const size_t cols = available.size();
+    std::vector<double> cost(rows * cols);
+    for (size_t i = 0; i < rows; ++i)
+        for (size_t j = 0; j < cols; ++j)
+            cost[i * cols + j] = distance(drivers[available[j]].position, requests[i].pickup);
+
+    const auto col_of_row = min_cost_assignment(rows, cols, cost);
+    std::vector<size_t> winners;
+    winners.reserve(rows);
+    for (size_t i = 0; i < rows; ++i) {
+        if (col_of_row[i] == static_cast<size_t>(-1)) continue;
+        result[i].driver_id = drivers[available[col_of_row[i]]].id;
+        result[i].pickup_distance = cost[i * cols + col_of_row[i]];
+        winners.push_back(available[col_of_row[i]]);
+    }
+    for (size_t idx : winners)
+        drivers[idx].available = false;
+    return result;
 }
 
 }

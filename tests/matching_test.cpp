@@ -8,7 +8,8 @@
 #include <unordered_set>
 #include <random>
 #include <stdexcept>
-#include <vector>
+#include <unordered_map>
+#include <unordered_set>
 
 #define CHECK(x) do { if(!(x)) throw std::runtime_error("check failed: " #x); } while(false)
 
@@ -162,6 +163,296 @@ void batch_tests() {
     compare_batch(large, large_requests);
 }
 
+struct Oracle {
+    double total = sr::inf;
+    std::vector<uint32_t> driver_ids;
+    int optima = 0;
+};
+
+void search_oracle(const std::vector<sr::Driver>& drivers,
+                   const std::vector<size_t>& available,
+                   const std::vector<sr::RideRequest>& requests,
+                   std::vector<char>& used, std::vector<uint32_t>& cur,
+                   size_t row, size_t matched, double sum, Oracle& best) {
+    const size_t n = requests.size();
+    const size_t m = available.size();
+    const size_t need = std::min(n, m);
+    if (matched > need || matched + (n - row) < need) return;
+    if (row == n) {
+        if (matched != need) return;
+        if (sum < best.total) {
+            best.total = sum;
+            best.driver_ids = cur;
+            best.optima = 1;
+        } else if (sum == best.total) {
+            ++best.optima;
+        }
+        return;
+    }
+    if (matched + (n - row) - 1 >= need) {
+        const auto saved = cur[row];
+        cur[row] = sr::invalid;
+        search_oracle(drivers, available, requests, used, cur, row + 1, matched, sum, best);
+        cur[row] = saved;
+    }
+    for (size_t j = 0; j < m; ++j) {
+        if (used[j]) continue;
+        used[j] = 1;
+        cur[row] = drivers[available[j]].id;
+        const double dist = sr::distance(drivers[available[j]].position, requests[row].pickup);
+        search_oracle(drivers, available, requests, used, cur, row + 1, matched + 1, sum + dist, best);
+        used[j] = 0;
+    }
+}
+
+Oracle exhaustive_assignment(const std::vector<sr::Driver>& drivers,
+                             const std::vector<sr::RideRequest>& requests) {
+    std::vector<size_t> available;
+    for (size_t i = 0; i < drivers.size(); ++i)
+        if (drivers[i].available) available.push_back(i);
+    Oracle best;
+    std::vector<char> used(available.size(), 0);
+    std::vector<uint32_t> cur(requests.size(), sr::invalid);
+    search_oracle(drivers, available, requests, used, cur, 0, 0, 0.0, best);
+    if (requests.empty()) {
+        best.total = 0;
+        best.optima = 1;
+    }
+    return best;
+}
+
+double assignment_total(const std::vector<sr::Assignment>& result) {
+    double total = 0;
+    std::unordered_set<uint32_t> used;
+    for (const auto& a : result) {
+        if (a.driver_id == sr::invalid) {
+            CHECK(std::isinf(a.pickup_distance));
+            continue;
+        }
+        CHECK(used.insert(a.driver_id).second);
+        CHECK(std::isfinite(a.pickup_distance));
+        total += a.pickup_distance;
+    }
+    return total;
+}
+
+void check_hungarian_result(const std::vector<sr::Driver>& initial,
+                            std::vector<sr::Driver>& state,
+                            const std::vector<sr::RideRequest>& requests,
+                            const std::vector<sr::Assignment>& result) {
+    CHECK(result.size() == requests.size());
+    std::unordered_set<uint32_t> used;
+    std::unordered_map<uint32_t, size_t> index;
+    for (size_t i = 0; i < initial.size(); ++i) {
+        index[initial[i].id] = i;
+        CHECK(state[i].id == initial[i].id);
+        CHECK(state[i].position.x == initial[i].position.x);
+        CHECK(state[i].position.y == initial[i].position.y);
+    }
+    for (size_t i = 0; i < requests.size(); ++i) {
+        CHECK(result[i].request_id == requests[i].id);
+        if (result[i].driver_id == sr::invalid) {
+            CHECK(std::isinf(result[i].pickup_distance));
+            continue;
+        }
+        CHECK(used.insert(result[i].driver_id).second);
+        auto it = index.find(result[i].driver_id);
+        CHECK(it != index.end());
+        CHECK(initial[it->second].available);
+        CHECK(!state[it->second].available);
+        CHECK(result[i].pickup_distance ==
+              sr::distance(initial[it->second].position, requests[i].pickup));
+    }
+    for (size_t i = 0; i < initial.size(); ++i) {
+        if (!initial[i].available) CHECK(!state[i].available);
+        else if (used.count(initial[i].id)) CHECK(!state[i].available);
+        else CHECK(state[i].available);
+    }
+}
+
+void hungarian_tests() {
+    using sr::Driver; using sr::RideRequest;
+    auto run = [](std::vector<Driver> drivers, const std::vector<RideRequest>& requests,
+                  sr::HungarianOptions options = {}) {
+        auto initial = drivers;
+        auto result = sr::hungarian_batch(drivers, requests, options);
+        check_hungarian_result(initial, drivers, requests, result);
+        return result;
+    };
+
+    CHECK(run({}, {}).empty());
+    auto none = run({}, {{9, {0, 0}}});
+    CHECK(none.size() == 1 && none[0].driver_id == sr::invalid && std::isinf(none[0].pickup_distance));
+    CHECK(run({{77, {1, 2}, true}}, {}).empty());
+    auto busy = run({{77, {1, 2}, false}}, {{9, {0, 0}}});
+    CHECK(busy[0].driver_id == sr::invalid);
+
+    // Greedy is suboptimal: request order grabs the globally more valuable driver.
+    std::vector<Driver> subopt_d = {{10, {4, 0}, true}, {20, {20, 0}, true}};
+    std::vector<RideRequest> subopt_r = {{0, {5, 0}}, {1, {0, 0}}};
+    auto greedy_state = subopt_d, hungarian_state = subopt_d;
+    auto greedy = sr::greedy_batch_brute_force(greedy_state, subopt_r);
+    auto hungarian = sr::hungarian_batch(hungarian_state, subopt_r);
+    CHECK(greedy[0].driver_id == 10 && greedy[1].driver_id == 20);
+    CHECK(hungarian[0].driver_id == 20 && hungarian[1].driver_id == 10);
+    CHECK(assignment_total(hungarian) < assignment_total(greedy));
+    CHECK(assignment_total(hungarian) == 19.0);
+
+    // Rectangular: more requests than drivers.
+    auto short_supply = run({{5, {0, 0}, true}, {9, {10, 0}, false}},
+                            {{1, {0, 0}}, {2, {10, 0}}, {3, {1, 0}}});
+    CHECK(short_supply[0].driver_id == 5);
+    CHECK(short_supply[1].driver_id == sr::invalid);
+    CHECK(short_supply[2].driver_id == sr::invalid);
+
+    // Rectangular: more drivers than requests.
+    auto extra = run({{8, {100, 0}, true}, {3, {1, 0}, true}, {4, {2, 0}, true}},
+                     {{10, {0, 0}}});
+    CHECK(extra[0].driver_id == 3);
+
+    // Shortage of available drivers.
+    auto depleted = run({{1, {0, 0}, true}, {2, {1, 0}, true}},
+                        {{8, {0, 0}}, {9, {1, 0}}, {10, {2, 0}}});
+    CHECK(depleted[0].driver_id != sr::invalid);
+    CHECK(depleted[1].driver_id != sr::invalid);
+    CHECK(depleted[2].driver_id == sr::invalid);
+    CHECK(depleted[0].driver_id != depleted[1].driver_id);
+
+    // Unavailable drivers are excluded and do not consume the cap.
+    std::vector<Driver> mixed;
+    for (uint32_t i = 0; i < 513; ++i)
+        mixed.push_back({i, {double(i), 0}, i == 512});
+    auto only_last = run(mixed, {{0, {512, 0}}});
+    CHECK(only_last[0].driver_id == 512);
+
+    // Ties / coincident positions: canonical ID order, request rows.
+    auto tied = run({{30, {0, 0}, true}, {10, {0, 0}, true}, {20, {0, 0}, true}},
+                    {{2, {0, 0}}, {1, {0, 0}}});
+    CHECK(tied[0].driver_id == 10 && tied[1].driver_id == 20);
+
+    // Arbitrary IDs and shuffled storage.
+    std::vector<Driver> arbitrary = {{1000, {0, 1}, true}, {2, {10, 0}, true}, {50, {0, 0}, true}};
+    std::vector<RideRequest> arbitrary_r = {{9, {0, 0}}, {8, {10, 0}}};
+    auto first = run(arbitrary, arbitrary_r);
+    std::reverse(arbitrary.begin(), arbitrary.end());
+    auto shuffled = run(arbitrary, arbitrary_r);
+    CHECK(first[0].driver_id == shuffled[0].driver_id);
+    CHECK(first[1].driver_id == shuffled[1].driver_id);
+    CHECK(first[0].driver_id == 50 && first[1].driver_id == 2);
+
+    auto copy_a = arbitrary, copy_b = arbitrary;
+    auto once = sr::hungarian_batch(copy_a, arbitrary_r);
+    auto twice = sr::hungarian_batch(copy_b, arbitrary_r);
+    CHECK(once[0].driver_id == twice[0].driver_id && once[1].driver_id == twice[1].driver_id);
+
+    auto rejected = [](std::vector<Driver> d, const std::vector<RideRequest>& r,
+                       sr::HungarianOptions options = {}) {
+        auto copy = d;
+        bool threw = false;
+        try { sr::hungarian_batch(copy, r, options); }
+        catch (const std::invalid_argument&) { threw = true; }
+        CHECK(threw);
+        for (size_t i = 0; i < d.size(); ++i) CHECK(copy[i].available == d[i].available);
+    };
+    rejected({{1, {0, 0}, true}, {1, {1, 1}, false}}, {{1, {0, 0}}});
+    rejected({{sr::invalid, {0, 0}, true}}, {});
+    rejected({{1, {0, 0}, true}}, {{1, {0, 0}}, {1, {1, 1}}});
+    rejected({{1, {0, 0}, true}}, {{sr::invalid, {1, 1}}});
+    for (double bad : {sr::inf, -sr::inf, std::numeric_limits<double>::quiet_NaN()}) {
+        rejected({{1, {bad, 0}, true}}, {});
+        rejected({{1, {0, bad}, false}}, {});
+        rejected({{1, {0, 0}, true}}, {{2, {bad, 0}}});
+        rejected({{1, {0, 0}, true}}, {{2, {0, bad}}});
+    }
+    rejected({{1, {0, 0}, true}}, {}, {0, 512});
+    rejected({{1, {0, 0}, true}}, {}, {64, 0});
+    rejected({{1, {0, 0}, true}}, {}, {65, 512});
+    rejected({{1, {0, 0}, true}}, {}, {64, 513});
+
+    std::vector<RideRequest> too_many_requests;
+    for (uint32_t i = 0; i < 65; ++i) too_many_requests.push_back({i, {0, 0}});
+    rejected({{1, {0, 0}, true}}, too_many_requests);
+
+    std::vector<Driver> too_many_available;
+    for (uint32_t i = 0; i < 513; ++i) too_many_available.push_back({i, {0, 0}, true});
+    rejected(too_many_available, {{0, {0, 0}}});
+
+    std::vector<Driver> ok_cap;
+    for (uint32_t i = 0; i < 512; ++i) ok_cap.push_back({i, {double(i), 0}, true});
+    auto cap = run(ok_cap, {{0, {0, 0}}, {1, {10, 0}}});
+    CHECK(cap[0].driver_id == 0 && cap[1].driver_id == 10);
+
+    sr::HungarianOptions tight{2, 3};
+    rejected({{1, {0, 0}, true}, {2, {1, 0}, true}, {3, {2, 0}, true}},
+             {{0, {0, 0}}, {1, {1, 0}}, {2, {2, 0}}}, tight);
+    auto tight_ok = run({{1, {0, 0}, true}, {2, {1, 0}, true}, {3, {2, 0}, false}},
+                        {{0, {0, 0}}, {1, {1, 0}}}, tight);
+    CHECK(tight_ok[0].driver_id != sr::invalid && tight_ok[1].driver_id != sr::invalid);
+
+    for (uint64_t seed = 0; seed < 40; ++seed) {
+        std::mt19937_64 rng(seed);
+        std::vector<Driver> d;
+        size_t n_drv = 1 + rng() % 6;
+        for (size_t i = 0; i < n_drv; ++i)
+            d.push_back({uint32_t(i * 17 + 3), {double(rng() % 21) - 10, double(rng() % 21) - 10}, rng() % 3 != 0});
+        std::shuffle(d.begin(), d.end(), rng);
+        std::vector<RideRequest> r;
+        size_t n_req = rng() % 7;
+        for (size_t i = 0; i < n_req; ++i)
+            r.push_back({uint32_t(500 - i), {double(rng() % 21) - 10, double(rng() % 21) - 10}});
+        auto initial = d;
+        auto result = sr::hungarian_batch(d, r);
+        check_hungarian_result(initial, d, r, result);
+        auto oracle = exhaustive_assignment(initial, r);
+        if (n_req == 0) continue;
+        CHECK(assignment_total(result) == oracle.total);
+        size_t matched = 0;
+        for (const auto& a : result) if (a.driver_id != sr::invalid) ++matched;
+        size_t avail = 0;
+        for (const auto& drv : initial) if (drv.available) ++avail;
+        CHECK(matched == std::min(n_req, avail));
+        if (oracle.optima == 1) {
+            for (size_t i = 0; i < r.size(); ++i)
+                CHECK(result[i].driver_id == oracle.driver_ids[i]);
+        }
+        auto shuffled_d = initial;
+        std::shuffle(shuffled_d.begin(), shuffled_d.end(), rng);
+        auto shuffled_state = shuffled_d;
+        auto again = sr::hungarian_batch(shuffled_state, r);
+        for (size_t i = 0; i < r.size(); ++i) {
+            CHECK(again[i].driver_id == result[i].driver_id);
+            CHECK(again[i].pickup_distance == result[i].pickup_distance);
+        }
+        auto greedy_d = initial;
+        auto greedy_r = sr::greedy_batch_brute_force(greedy_d, r);
+        size_t greedy_matched = 0;
+        for (const auto& a : greedy_r) if (a.driver_id != sr::invalid) ++greedy_matched;
+        CHECK(matched == greedy_matched);
+        CHECK(assignment_total(result) <= assignment_total(greedy_r));
+    }
+
+    for (uint64_t seed = 0; seed < 20; ++seed) {
+        std::mt19937_64 rng(1000 + seed);
+        std::vector<Driver> d;
+        for (size_t i = 0; i < 24; ++i)
+            d.push_back({uint32_t(i * 3 + 1), {double(rng() % 101), double(rng() % 101)}, rng() % 4 != 0});
+        std::shuffle(d.begin(), d.end(), rng);
+        std::vector<RideRequest> r;
+        for (uint32_t i = 0; i < 16; ++i)
+            r.push_back({i, {double(rng() % 101), double(rng() % 101)}});
+        auto initial = d, greedy_d = d;
+        auto result = sr::hungarian_batch(d, r);
+        auto greedy_r = sr::greedy_batch_brute_force(greedy_d, r);
+        check_hungarian_result(initial, d, r, result);
+        CHECK(assignment_total(result) <= assignment_total(greedy_r));
+        auto shuffled_d = initial;
+        std::reverse(shuffled_d.begin(), shuffled_d.end());
+        auto shuffled_res = sr::hungarian_batch(shuffled_d, r);
+        for (size_t i = 0; i < r.size(); ++i)
+            CHECK(shuffled_res[i].driver_id == result[i].driver_id);
+    }
+}
+
 int main() {
     try {
         // 1. Empty driver set
@@ -295,6 +586,7 @@ int main() {
             std::cout << "SKIP: optional Estonia fixture unavailable in working directory\n";
         }
         batch_tests();
+        hungarian_tests();
 
         std::cout << "All matching unit tests and 100K-driver equivalence checks passed successfully!\n";
         return 0;

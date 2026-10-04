@@ -1,0 +1,30 @@
+# Hungarian vs greedy batch matching
+
+Map: data/estonia.srg; nodes=1328518; directed_edges=2671028
+Compiler: Apple LLVM 17.0.0 (clang-1700.6.3.2); C++=201703
+Seeds: driver=42, request=1234567; 2000 requests sliced into reset batches.
+Requests and drivers are simulated on OSM nodes; pickup cost is Euclidean meters.
+Availability is restored before each batch. Hungarian uses all available drivers in the snapshot.
+Times include complete API setup/teardown; exclude input reset, request slicing, and verification.
+Percentiles are batch latency in milliseconds. Alternate algorithm timing order per batch.
+Cardinality and Hungarian total pickup <= greedy total are checked outside timing.
+Initial engineering target: p95 <= 10 ms for 32 requests x 256 drivers in Release.
+
+| Requests | Available drivers | Samples | Greedy p50/p95/p99 ms | Hungarian p50/p95/p99 ms | Matched/unmatched | Greedy mean pickup m | Hungarian mean pickup m | Greedy/Hungarian time | Verified |
+|---|---|---|---|---|---|---|---|---|---|
+| 8 | 32 | 250 | 0.002/0.002/0.003 | 0.003/0.004/0.005 | 2000/0 | 25185.943 | 24053.179 | 0.729 | 2000/2000 |
+| 8 | 128 | 250 | 0.006/0.007/0.007 | 0.007/0.009/0.010 | 2000/0 | 8855.357 | 8792.444 | 0.800 | 2000/2000 |
+| 8 | 256 | 250 | 0.011/0.011/0.013 | 0.013/0.015/0.020 | 2000/0 | 5966.583 | 5942.667 | 0.794 | 2000/2000 |
+| 8 | 512 | 250 | 0.021/0.023/0.025 | 0.026/0.029/0.031 | 2000/0 | 4160.381 | 4156.781 | 0.803 | 2000/2000 |
+| 16 | 32 | 125 | 0.003/0.004/0.004 | 0.005/0.006/0.007 | 2000/0 | 28909.124 | 26621.315 | 0.689 | 2000/2000 |
+| 16 | 128 | 125 | 0.008/0.009/0.011 | 0.010/0.012/0.013 | 2000/0 | 9098.417 | 8941.961 | 0.787 | 2000/2000 |
+| 16 | 256 | 125 | 0.016/0.016/0.022 | 0.020/0.022/0.024 | 2000/0 | 6041.600 | 5996.272 | 0.772 | 2000/2000 |
+| 16 | 512 | 125 | 0.029/0.033/0.035 | 0.038/0.043/0.048 | 2000/0 | 4178.156 | 4165.649 | 0.758 | 2000/2000 |
+| 32 | 32 | 63 | 0.005/0.006/0.006 | 0.023/0.029/0.033 | 2000/0 | 48904.878 | 38915.433 | 0.230 | 2000/2000 |
+| 32 | 128 | 63 | 0.015/0.017/0.022 | 0.020/0.024/0.028 | 2000/0 | 9608.214 | 9245.787 | 0.746 | 2000/2000 |
+| 32 | 256 | 63 | 0.026/0.029/0.031 | 0.036/0.041/0.043 | 2000/0 | 6199.484 | 6092.247 | 0.733 | 2000/2000 |
+| 32 | 512 | 63 | 0.047/0.052/0.061 | 0.065/0.074/0.077 | 2000/0 | 4224.897 | 4197.930 | 0.732 | 2000/2000 |
+| 64 | 32 | 32 | 0.006/0.006/0.006 | 0.017/0.021/0.021 | 1008/992 | 49468.388 | 15465.930 | 0.357 | 2000/2000 |
+| 64 | 128 | 32 | 0.026/0.029/0.034 | 0.043/0.053/0.055 | 2000/0 | 11309.005 | 10421.635 | 0.614 | 2000/2000 |
+| 64 | 256 | 32 | 0.046/0.051/0.052 | 0.068/0.082/0.086 | 2000/0 | 6650.648 | 6394.272 | 0.671 | 2000/2000 |
+| 64 | 512 | 32 | 0.085/0.089/0.092 | 0.122/0.129/0.130 | 2000/0 | 4375.578 | 4272.880 | 0.702 | 2000/2000 |

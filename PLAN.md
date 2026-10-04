@@ -15,7 +15,10 @@
   - [x] 4A: SpatialGrid nearest-driver indexing and oracle benchmark.
   - [x] 4B: deterministic greedy batch matching; validated inputs, immediate
     reservations, brute-force oracle equivalence, 100K-driver tests and benchmark.
-  - [ ] Remaining: exact bounded Hungarian and candidate/approximation tradeoffs.
+  - [x] 4C: bounded exact Hungarian batch matching; hard caps of 64 requests and
+    512 available drivers; max cardinality then min Euclidean pickup; no greedy
+    fallback; exhaustive small-instance checks and greedy snapshot comparison.
+  - [ ] Remaining: candidate/approximation tradeoffs.
 - [ ] 5. Concurrency: std::thread pool, sharded locks, atomic driver state;
   competing requests and double-booking tests; TSan where supported.
 - [ ] 6. Recovery: WAL, durable semantics, abrupt death/replay tests,
