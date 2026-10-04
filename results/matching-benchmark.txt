@@ -1,0 +1,11 @@
+# SpatialGrid vs Brute-Force Nearest-Driver Benchmark
+
+Road network: 1328518 nodes, 2671028 directed edges
+Workload: 2000 random queries per scale; seeds: driver=42, query=1234567
+Timestamp: Oct  4 2026 13:06:38
+
+| Drivers | Grid Build (ms) | Brute p50 (us) | Brute p95 (us) | Brute p99 (us) | Brute (QPS) | Grid p50 (us) | Grid p95 (us) | Grid p99 (us) | Grid (QPS) | QPS Speedup | Correctness |
+|---------|-----------------|----------------|----------------|----------------|-------------|---------------|---------------|---------------|------------|-------------|-------------|
+|    1000 |            0.02 |           1.96 |           2.33 |           2.54 |      491778 |          0.17 |          0.38 |          0.58 |    5060613 |       10.3x | 100% match |
+|   10000 |            0.19 |          19.12 |          22.58 |          24.08 |       50443 |          0.17 |          0.58 |          1.62 |    3884438 |       77.0x | 100% match |
+|  100000 |            1.89 |         192.88 |         207.92 |         244.50 |        5127 |          0.29 |          1.33 |          3.08 |    2099002 |      409.4x | 100% match |

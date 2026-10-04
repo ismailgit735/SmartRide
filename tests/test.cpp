@@ -23,6 +23,10 @@ int main() {
         std::vector<sr::Driver> d={{0,{0,0},true},{1,{10,0},true}};
         CHECK(sr::nearest_driver(d,{9,0})==1); d[1].available=false; CHECK(sr::nearest_driver(d,{9,0})==0);
         d[0].available=false; CHECK(sr::nearest_driver(d,{0,0})==sr::invalid);
+        d[0].available=true; d[1].available=true;
+        sr::SpatialGrid sgrid(d, 5.0);
+        CHECK(sgrid.nearest_driver({9,0})==1); d[1].available=false; CHECK(sgrid.nearest_driver({9,0})==0);
+        d[0].available=false; CHECK(sgrid.nearest_driver({0,0})==sr::invalid);
         std::cout<<"baseline tests passed\n";
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n'; return 1;}
 }

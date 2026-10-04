@@ -101,7 +101,17 @@ ContractionHierarchy::ContractionHierarchy(const Graph& g,unsigned witness_limit
     // One bounded witness search per incoming source; all outgoing targets share it.
     auto witness=[&](Node source,Node avoid,double limit) {
         for(auto v:touched) wd[v]=inf; touched.clear();
-        Queue q; wd[source]=0; touched.push_back(source); q.push({0,source}); unsigned settled=0;
+        wd[source]=0; touched.push_back(source);
+        for(auto id:out_[source]) {
+            const auto& a=arcs_[id];
+            if(a.to==avoid || rank_[a.to]!=invalid || a.weight>limit) continue;
+            if(a.weight<wd[a.to]) {
+                if(!std::isfinite(wd[a.to])) touched.push_back(a.to);
+                wd[a.to]=a.weight;
+            }
+        }
+        if(witness_limit==0) return;
+        Queue q; q.push({0,source}); unsigned settled=0;
         while(!q.empty() && settled<witness_limit) {
             auto [cost,u]=q.top(); q.pop(); if(cost!=wd[u]) continue;
             if(cost>limit) break; ++settled;
@@ -113,29 +123,42 @@ ContractionHierarchy::ContractionHierarchy(const Graph& g,unsigned witness_limit
         }
     };
     uint32_t next=0;
+    std::vector<EdgeId> in_best(g.points.size(),invalid),out_best(g.points.size(),invalid);
+    std::vector<Node> in_nodes,out_nodes;
     while(!order.empty()) {
         auto [old,v]=order.top(); order.pop(); if(rank_[v]!=invalid) continue;
         double actual=priority(v);
         if(actual>old && !order.empty() && actual>order.top().first) {order.push({actual,v}); continue;}
-        std::vector<EdgeId> incoming,outgoing;
-        for(auto id:in_[v]) if(arcs_[id].from!=v && rank_[arcs_[id].from]==invalid) incoming.push_back(id);
-        for(auto id:out_[v]) if(arcs_[id].to!=v && rank_[arcs_[id].to]==invalid) outgoing.push_back(id);
-        for(auto left:incoming) {
+        in_nodes.clear(); out_nodes.clear();
+        for(auto id:in_[v]) {
+            Node u=arcs_[id].from; if(u==v || rank_[u]!=invalid) continue;
+            if(in_best[u]==invalid) {in_nodes.push_back(u); in_best[u]=id;}
+            else if(arcs_[id].weight<arcs_[in_best[u]].weight) in_best[u]=id;
+        }
+        for(auto id:out_[v]) {
+            Node w=arcs_[id].to; if(w==v || rank_[w]!=invalid) continue;
+            if(out_best[w]==invalid) {out_nodes.push_back(w); out_best[w]=id;}
+            else if(arcs_[id].weight<arcs_[out_best[w]].weight) out_best[w]=id;
+        }
+        for(auto u:in_nodes) {
+            auto left=in_best[u]; in_best[u]=invalid;
             const auto a=arcs_[left]; double limit=0;
-            for(auto right:outgoing) limit=std::max(limit,a.weight+arcs_[right].weight);
+            for(auto w:out_nodes) limit=std::max(limit,a.weight+arcs_[out_best[w]].weight);
             witness(a.from,v,limit);
-            for(auto right:outgoing) {
+            for(auto w:out_nodes) {
+                auto right=out_best[w];
                 const auto b=arcs_[right]; if(a.from==b.to) continue;
-                double w=a.weight+b.weight;
-                if(wd[b.to]<=w) continue;
+                double wgt=a.weight+b.weight;
+                if(wd[b.to]<=wgt) continue;
                 if(arcs_.size()>=invalid) throw std::overflow_error("too many CH arcs");
-                EdgeId id=arcs_.size(); arcs_.push_back({a.from,b.to,w,left,right,invalid});
+                EdgeId id=arcs_.size(); arcs_.push_back({a.from,b.to,wgt,left,right,invalid});
                 out_[a.from].push_back(id); in_[b.to].push_back(id);
             }
         }
+        for(auto w:out_nodes) out_best[w]=invalid;
         rank_[v]=next++;
-        for(auto id:incoming) level[arcs_[id].from]=std::max(level[arcs_[id].from],level[v]+1);
-        for(auto id:outgoing) level[arcs_[id].to]=std::max(level[arcs_[id].to],level[v]+1);
+        for(auto u:in_nodes) level[u]=std::max(level[u],level[v]+1);
+        for(auto w:out_nodes) level[w]=std::max(level[w],level[v]+1);
     }
 }
 void ContractionHierarchy::unpack(EdgeId id,std::vector<EdgeId>& result) const {

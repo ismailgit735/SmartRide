@@ -6,7 +6,7 @@
 - [x] 2. OSM: established parser, real drivable network targeting ~1M directed
   edges, actual counts, one-way handling, access/weight/turn limitations,
   attribution and reproducible public download instructions.
-- [ ] 3. Routing: A*, bidirectional A*, Contraction Hierarchies; Dijkstra
+- [x] 3. Routing: A*, bidirectional A*, Contraction Hierarchies; Dijkstra
   distance and reconstructed-route equivalence on directed, disconnected,
   randomized graphs. Record preprocessing cost.
 - [ ] 4. Matching: grid, nearest, greedy batch, exact bounded Hungarian;

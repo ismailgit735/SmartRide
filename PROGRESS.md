@@ -33,3 +33,37 @@ SHA256 hashes are in data/estonia.json and results/import.json. C++ load/demo
 succeeded: 185,094 m route with 2,937 original edges. Profile/parser fixture tests
 pass. ASan startup stalled both in/outside sandbox; interrupted and marked
 unverified pending sanitizer troubleshooting. Starting routing algorithms.
+
+## Milestone 3 verified
+Contraction Hierarchies shortcut generation fixed in `src/routing.cpp`:
+- Candidate incoming/outgoing edges deduplicated to select minimum weights per neighbor.
+- Direct edges inspected during witness evaluation so direct alternatives are recognized even when `witness_limit == 0`.
+- Release build passes 100% of test suites via CTest in ~0.10 s:
+  - Test #1: `correctness` passed (Dijkstra, graph validation, nearest driver).
+  - Test #2: `routing` passed (A*, balanced bidirectional A*, Contraction Hierarchies against Dijkstra oracle on directed, disconnected, cycle, parallel, grid, and 60 randomized graph seeds).
+- Python OSM profile and pyosmium parser tests passed in `tests/test_import.py`.
+- Results captured in `results/routing-tests.txt`. Next milestone: Milestone 4 (Spatial Indexing & Matching).
+## Milestone 4A verified — SpatialGrid benchmark
+
+SpatialGrid nearest-driver correctness and performance benchmark completed.
+
+- Compared `sr::nearest_driver()` brute-force lookup against `sr::SpatialGrid::nearest_driver()`.
+- Benchmarked 1,000, 10,000, and 100,000 active drivers.
+- Used 2,000 reproducible queries per scale.
+- Fixed random seeds: driver=42, query=1234567.
+- Benchmark ran on the Estonia road network: 1,328,518 nodes and 2,671,028 directed edges.
+- Verified every SpatialGrid result matched the brute-force result.
+- All three benchmark scales achieved 100% correctness.
+- Recorded SpatialGrid construction time, p50/p95/p99 latency, QPS, and QPS speedup.
+- Raw results saved to `results/matching-benchmark.txt`.
+- Reproducible benchmark target: `matching_bench`.
+- Release build, CTest, and Python import/parser tests passed.
+- Batch matching and Hungarian matching were intentionally not implemented.
+
+### Benchmark results
+
+| Drivers | Grid Build (ms) | Brute p50 (us) | Brute p95 (us) | Brute p99 (us) | Brute QPS | Grid p50 (us) | Grid p95 (us) | Grid p99 (us) | Grid QPS | QPS Speedup |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | 0.02 | 1.96 | 2.33 | 2.54 | 491778 | 0.17 | 0.38 | 0.58 | 5060614 | 10.3x |
+| 10,000 | 0.19 | 19.12 | 22.58 | 24.08 | 50443 | 0.17 | 0.58 | 1.62 | 3884438 | 77.0x |
+| 100,000 | 1.89 | 192.88 | 207.92 | 244.50 | 5127 | 0.29 | 1.33 | 3.08 | 2099002 | 409.4x |
