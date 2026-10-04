@@ -3,6 +3,8 @@
 #include <cmath>
 #include <random>
 #include <stdexcept>
+#include <unordered_map>
+#include <unordered_set>
 namespace sr {
 uint32_t nearest_driver(const std::vector<Driver>& drivers, Point p) {
     double best=inf; uint32_t result=invalid;
@@ -39,20 +41,28 @@ SpatialGrid::SpatialGrid(const std::vector<Driver>& drivers, double cell_size)
             cell_size_ = 1000.0;
         }
     }
-    cols_ = std::max(1, static_cast<int>(std::floor((max_x_ - min_x_) / cell_size_)) + 1);
-    rows_ = std::max(1, static_cast<int>(std::floor((max_y_ - min_y_) / cell_size_)) + 1);
+    if (!std::isfinite(cell_size_))
+        throw std::invalid_argument("grid cell size exceeds supported range");
+    auto dimension = [&](double span) {
+        double count = std::floor(span / cell_size_) + 1;
+        if (!std::isfinite(count) || count > std::numeric_limits<int>::max() / 2)
+            throw std::invalid_argument("grid dimensions exceed supported range");
+        return std::max(1, static_cast<int>(count));
+    };
+    cols_ = dimension(max_x_ - min_x_);
+    rows_ = dimension(max_y_ - min_y_);
     cells_.resize(static_cast<size_t>(cols_) * rows_);
     for (size_t i = 0; i < drivers_.size(); ++i) {
         int cx = std::clamp(static_cast<int>(std::floor((drivers_[i].position.x - min_x_) / cell_size_)), 0, cols_ - 1);
         int cy = std::clamp(static_cast<int>(std::floor((drivers_[i].position.y - min_y_) / cell_size_)), 0, rows_ - 1);
-        cells_[cy * cols_ + cx].push_back(static_cast<uint32_t>(i));
+        cells_[size_t(cy) * cols_ + cx].push_back(static_cast<uint32_t>(i));
     }
 }
 
 uint32_t SpatialGrid::nearest_driver(Point p) const {
     if (drivers_.empty()) return invalid;
-    int cx = std::clamp(static_cast<int>(std::floor((p.x - min_x_) / cell_size_)), 0, cols_ - 1);
-    int cy = std::clamp(static_cast<int>(std::floor((p.y - min_y_) / cell_size_)), 0, rows_ - 1);
+    int cx = static_cast<int>(std::clamp(std::floor((p.x - min_x_) / cell_size_), 0.0, double(cols_ - 1)));
+    int cy = static_cast<int>(std::clamp(std::floor((p.y - min_y_) / cell_size_), 0.0, double(rows_ - 1)));
 
     double best_dist = inf;
     uint32_t best_id = invalid;
@@ -66,7 +76,7 @@ uint32_t SpatialGrid::nearest_driver(Point p) const {
 
         auto check_cell = [&](int x, int y) {
             if (x < 0 || x >= cols_ || y < 0 || y >= rows_) return;
-            for (uint32_t idx : cells_[y * cols_ + x]) {
+            for (uint32_t idx : cells_[size_t(y) * cols_ + x]) {
                 const auto& d = drivers_[idx];
                 if (!d.available) continue;
                 double dist = distance(d.position, p);
@@ -124,4 +134,66 @@ uint32_t SpatialGrid::nearest_driver(Point p) const {
     }
     return best_id;
 }
+namespace {
+std::unordered_map<uint32_t, size_t> validate_batch(
+    const std::vector<Driver>& drivers, const std::vector<RideRequest>& requests) {
+    if (drivers.size() >= invalid) throw std::invalid_argument("too many drivers");
+    std::unordered_map<uint32_t, size_t> indices;
+    indices.reserve(drivers.size());
+    auto finite = [](Point p) { return std::isfinite(p.x) && std::isfinite(p.y); };
+    for (size_t i = 0; i < drivers.size(); ++i) {
+        const auto& d = drivers[i];
+        if (d.id == invalid || !finite(d.position) || !indices.emplace(d.id, i).second)
+            throw std::invalid_argument("invalid driver ID or coordinates");
+    }
+    std::unordered_set<uint32_t> ids;
+    ids.reserve(requests.size());
+    for (const auto& r : requests)
+        if (r.id == invalid || !finite(r.pickup) || !ids.insert(r.id).second)
+            throw std::invalid_argument("invalid request ID or coordinates");
+    return indices;
+}
+
+template<class Lookup>
+std::vector<Assignment> assign_batch(std::vector<Driver>& drivers,
+    const std::vector<RideRequest>& requests,
+    const std::unordered_map<uint32_t, size_t>& indices, Lookup lookup) {
+    std::vector<Assignment> result;
+    result.reserve(requests.size());
+    size_t remaining = std::count_if(drivers.begin(), drivers.end(),
+        [](const Driver& d) { return d.available; });
+    for (const auto& request : requests) {
+        Assignment assignment{request.id};
+        if (remaining) {
+            assignment.driver_id = lookup(request.pickup);
+            if (assignment.driver_id != invalid) {
+                auto& driver = drivers[indices.at(assignment.driver_id)];
+                assignment.pickup_distance = distance(driver.position, request.pickup);
+                driver.available = false;
+                --remaining;
+            }
+        }
+        result.push_back(assignment);
+    }
+    return result;
+}
+}
+
+std::vector<Assignment> greedy_batch_brute_force(std::vector<Driver>& drivers,
+    const std::vector<RideRequest>& requests) {
+    const auto indices = validate_batch(drivers, requests);
+    return assign_batch(drivers, requests, indices,
+        [&](Point p) { return nearest_driver(drivers, p); });
+}
+
+std::vector<Assignment> greedy_batch_spatial(std::vector<Driver>& drivers,
+    const std::vector<RideRequest>& requests, double cell_size) {
+    const auto indices = validate_batch(drivers, requests);
+    if (!std::isfinite(cell_size) || cell_size < 0)
+        throw std::invalid_argument("cell size must be finite and nonnegative");
+    SpatialGrid grid(drivers, cell_size);
+    return assign_batch(drivers, requests, indices,
+        [&](Point p) { return grid.nearest_driver(p); });
+}
+
 }
