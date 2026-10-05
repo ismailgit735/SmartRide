@@ -19,10 +19,12 @@ Route dijkstra(const Graph& g, Node s, Node t) {
     std::reverse(r.edges.begin(),r.edges.end()); return r;
 }
 bool valid_route(const Graph& g, Node s, Node t, const Route& r) {
-    if(!std::isfinite(r.distance)) return r.edges.empty();
+    if(s>=g.points.size() || t>=g.points.size()) return false;
+    if(r.distance==inf) return s!=t && r.edges.empty();
+    if(!std::isfinite(r.distance) || r.distance<0) return false;
     double sum=0; Node u=s;
     for(auto id:r.edges) { if(id>=g.edges.size()) return false; auto e=g.edges[id]; if(e.from!=u) return false; u=e.to; sum+=e.weight; }
-    return u==t && std::abs(sum-r.distance)<=1e-7*std::max(1.0,sum);
+    return std::isfinite(sum) && u==t && std::abs(sum-r.distance)<=1e-7*std::max(1.0,sum);
 }
 }
 
@@ -102,16 +104,20 @@ ContractionHierarchy::ContractionHierarchy(const Graph& g,unsigned witness_limit
     auto witness=[&](Node source,Node avoid,double limit) {
         for(auto v:touched) wd[v]=inf; touched.clear();
         wd[source]=0; touched.push_back(source);
+        Queue q;
         for(auto id:out_[source]) {
             const auto& a=arcs_[id];
             if(a.to==avoid || rank_[a.to]!=invalid || a.weight>limit) continue;
             if(a.weight<wd[a.to]) {
                 if(!std::isfinite(wd[a.to])) touched.push_back(a.to);
                 wd[a.to]=a.weight;
+                // Seeded labels must also be queued: relaxing from source
+                // cannot improve them again, so otherwise no neighbor expands.
+                if(witness_limit!=0) q.push({a.weight,a.to});
             }
         }
         if(witness_limit==0) return;
-        Queue q; q.push({0,source}); unsigned settled=0;
+        q.push({0,source}); unsigned settled=0;
         while(!q.empty() && settled<witness_limit) {
             auto [cost,u]=q.top(); q.pop(); if(cost!=wd[u]) continue;
             if(cost>limit) break; ++settled;

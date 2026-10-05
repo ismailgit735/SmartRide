@@ -7,9 +7,24 @@
 #include <unordered_map>
 #include <unordered_set>
 namespace sr {
+namespace {
+void validate_point(Point p) {
+    if (!std::isfinite(p.x) || !std::isfinite(p.y))
+        throw std::invalid_argument("coordinates must be finite");
+}
+double finite_cost(double value) {
+    if (!std::isfinite(value))
+        throw std::invalid_argument("pickup cost arithmetic exceeds supported range");
+    return value;
+}
+}
 uint32_t nearest_driver(const std::vector<Driver>& drivers, Point p) {
+    validate_point(p);
     double best=inf; uint32_t result=invalid;
-    for(const auto& d:drivers) if(d.available) { double c=distance(d.position,p); if(c<best || (c==best && d.id<result)) {best=c; result=d.id;} }
+    for(const auto& d:drivers) {
+        validate_point(d.position);
+        if(d.available) { double c=finite_cost(distance(d.position,p)); if(c<best || (c==best && d.id<result)) {best=c; result=d.id;} }
+    }
     return result;
 }
 std::vector<Driver> simulate_drivers(size_t n,const Graph& g,uint64_t seed) {
@@ -20,10 +35,14 @@ std::vector<Driver> simulate_drivers(size_t n,const Graph& g,uint64_t seed) {
 
 SpatialGrid::SpatialGrid(const std::vector<Driver>& drivers, double cell_size)
     : drivers_(drivers) {
+    if (!std::isfinite(cell_size) || cell_size < 0)
+        throw std::invalid_argument("cell size must be finite and nonnegative");
+    if (drivers_.size() >= invalid) throw std::invalid_argument("too many drivers");
     if (drivers_.empty()) return;
     min_x_ = max_x_ = drivers_[0].position.x;
     min_y_ = max_y_ = drivers_[0].position.y;
     for (const auto& d : drivers_) {
+        validate_point(d.position);
         min_x_ = std::min(min_x_, d.position.x);
         max_x_ = std::max(max_x_, d.position.x);
         min_y_ = std::min(min_y_, d.position.y);
@@ -61,6 +80,7 @@ SpatialGrid::SpatialGrid(const std::vector<Driver>& drivers, double cell_size)
 }
 
 uint32_t SpatialGrid::nearest_driver(Point p) const {
+    validate_point(p);
     if (drivers_.empty()) return invalid;
     int cx = static_cast<int>(std::clamp(std::floor((p.x - min_x_) / cell_size_), 0.0, double(cols_ - 1)));
     int cy = static_cast<int>(std::clamp(std::floor((p.y - min_y_) / cell_size_), 0.0, double(rows_ - 1)));
@@ -80,7 +100,7 @@ uint32_t SpatialGrid::nearest_driver(Point p) const {
             for (uint32_t idx : cells_[size_t(y) * cols_ + x]) {
                 const auto& d = drivers_[idx];
                 if (!d.available) continue;
-                double dist = distance(d.position, p);
+                double dist = finite_cost(distance(d.position, p));
                 if (dist < best_dist || (dist == best_dist && d.id < best_id)) {
                     best_dist = dist;
                     best_id = d.id;
@@ -163,18 +183,27 @@ std::vector<Assignment> assign_batch(std::vector<Driver>& drivers,
     result.reserve(requests.size());
     size_t remaining = std::count_if(drivers.begin(), drivers.end(),
         [](const Driver& d) { return d.available; });
-    for (const auto& request : requests) {
-        Assignment assignment{request.id};
-        if (remaining) {
-            assignment.driver_id = lookup(request.pickup);
-            if (assignment.driver_id != invalid) {
-                auto& driver = drivers[indices.at(assignment.driver_id)];
-                assignment.pickup_distance = distance(driver.position, request.pickup);
-                driver.available = false;
-                --remaining;
+    try {
+        for (const auto& request : requests) {
+            Assignment assignment{request.id};
+            if (remaining) {
+                assignment.driver_id = lookup(request.pickup);
+                if (assignment.driver_id != invalid) {
+                    auto& driver = drivers[indices.at(assignment.driver_id)];
+                    assignment.pickup_distance = finite_cost(distance(driver.position, request.pickup));
+                    driver.available = false;
+                    --remaining;
+                }
             }
+            result.push_back(assignment);
         }
-        result.push_back(assignment);
+    } catch (...) {
+        // result was reserved before mutation; every previous winner was
+        // available on entry. Restore only winners from this call on failure.
+        for (const auto& assignment : result)
+            if (assignment.driver_id != invalid)
+                drivers[indices.at(assignment.driver_id)].available = true;
+        throw;
     }
     return result;
 }
@@ -205,8 +234,8 @@ std::vector<size_t> kuhn_munkres(size_t rows, size_t cols, const std::vector<dou
             int j1 = 0;
             for (size_t j = 1; j <= cols; ++j) {
                 if (used[j]) continue;
-                const double cur = cost[static_cast<size_t>(i0 - 1) * cols + (j - 1)]
-                    - u[static_cast<size_t>(i0)] - v[j];
+                const double cur = finite_cost(cost[static_cast<size_t>(i0 - 1) * cols + (j - 1)]
+                    - u[static_cast<size_t>(i0)] - v[j]);
                 if (cur < minv[j]) {
                     minv[j] = cur;
                     way[j] = j0;
@@ -216,12 +245,14 @@ std::vector<size_t> kuhn_munkres(size_t rows, size_t cols, const std::vector<dou
                     j1 = static_cast<int>(j);
                 }
             }
+            if (j1 == 0 || !std::isfinite(delta))
+                throw std::invalid_argument("hungarian augmentation cannot progress");
             for (size_t j = 0; j <= cols; ++j) {
                 if (used[j]) {
-                    u[static_cast<size_t>(p[j])] += delta;
-                    v[j] -= delta;
+                    u[static_cast<size_t>(p[j])] = finite_cost(u[static_cast<size_t>(p[j])] + delta);
+                    v[j] = finite_cost(v[j] - delta);
                 } else {
-                    minv[j] -= delta;
+                    minv[j] = finite_cost(minv[j] - delta);
                 }
             }
             j0 = j1;
@@ -301,7 +332,7 @@ std::vector<Assignment> hungarian_batch(std::vector<Driver>& drivers,
     std::vector<double> cost(rows * cols);
     for (size_t i = 0; i < rows; ++i)
         for (size_t j = 0; j < cols; ++j)
-            cost[i * cols + j] = distance(drivers[available[j]].position, requests[i].pickup);
+            cost[i * cols + j] = finite_cost(distance(drivers[available[j]].position, requests[i].pickup));
 
     const auto col_of_row = min_cost_assignment(rows, cols, cost);
     std::vector<size_t> winners;

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <random>
 #include <stdexcept>
+#define CHECK(x) do { if(!(x)) throw std::runtime_error("check failed: " #x); } while(false)
 void compare(const sr::Graph& g,unsigned limit=128) {
     sr::Router router(g); sr::ContractionHierarchy ch(g,limit);
     for(sr::Node s=0;s<g.points.size();++s) for(sr::Node t=0;t<g.points.size();++t) {
@@ -13,8 +14,35 @@ void compare(const sr::Graph& g,unsigned limit=128) {
         }
     }
 }
+void witness_regression() {
+    // Node 0 contracts first. 1->3->2 is a shorter two-edge witness for
+    // 1->0->2; 2->1 keeps the endpoints from contracting first.
+    sr::Graph g;
+    for (int i=0; i<4; ++i) g.add_node();
+    g.add_edge(1,0,2); g.add_edge(0,2,2);
+    g.add_edge(1,3,1); g.add_edge(3,2,1); g.add_edge(2,1,100);
+    sr::ContractionHierarchy full(g,128), direct_only(g,0), bounded(g,1);
+    CHECK(full.shortcut_count()==1);
+    CHECK(direct_only.shortcut_count()==2);
+    CHECK(bounded.shortcut_count()==2);
+    compare(g,128); compare(g,0); compare(g,1);
+    // Equal-cost witnesses also suppress shortcuts; a direct alternative is
+    // recognized even with no witness-search budget.
+    g.add_edge(1,2,4);
+    CHECK(sr::ContractionHierarchy(g,0).shortcut_count()==1);
+    g.add_edge(1,2,2);
+    CHECK(sr::ContractionHierarchy(g,0).shortcut_count()==0);
+    compare(g,0); compare(g,128);
+    sr::Graph equal;
+    for (int i=0; i<4; ++i) equal.add_node();
+    equal.add_edge(1,0,1); equal.add_edge(0,2,1);
+    equal.add_edge(1,3,1); equal.add_edge(3,2,1); equal.add_edge(2,1,100);
+    CHECK(sr::ContractionHierarchy(equal,128).shortcut_count()==1);
+    compare(equal);
+}
 int main() {
     try {
+        witness_regression();
         sr::Graph directed; for(int i=0;i<7;++i) directed.add_node({double(i),0});
         directed.add_edge(0,1,0); directed.add_edge(1,2,0); directed.add_edge(2,0,0);
         directed.add_edge(2,3,4); directed.add_edge(0,3,9); directed.add_edge(0,3,5);

@@ -13,6 +13,99 @@
 
 #define CHECK(x) do { if(!(x)) throw std::runtime_error("check failed: " #x); } while(false)
 
+template<class Call>
+void rejects_invalid(Call call) {
+    bool rejected = false;
+    try { call(); } catch (const std::invalid_argument&) { rejected = true; }
+    CHECK(rejected);
+}
+
+void numeric_boundary_tests() {
+    using sr::Driver; using sr::RideRequest;
+    const std::vector<Driver> ordinary = {{10, {0, 0}, true}, {20, {1, 1}, false}};
+    for (double bad : {sr::inf, -sr::inf, std::numeric_limits<double>::quiet_NaN()}) {
+        for (sr::Point p : {sr::Point{bad, 0}, sr::Point{0, bad}}) {
+            for (bool empty : {false, true}) {
+                auto drivers = empty ? std::vector<Driver>{} : ordinary;
+                sr::SpatialGrid grid(drivers);
+                rejects_invalid([&] { (void)grid.nearest_driver(p); });
+                rejects_invalid([&] { (void)sr::nearest_driver(drivers, p); });
+            }
+            // Both the first point and an unavailable later point are checked.
+            for (size_t i : {size_t(0), size_t(1)}) {
+                auto drivers = ordinary;
+                drivers[i].position = p;
+                rejects_invalid([&] { sr::SpatialGrid grid(drivers); });
+                rejects_invalid([&] { (void)sr::nearest_driver(drivers, {0, 0}); });
+            }
+        }
+    }
+    for (double bad : {-1.0, sr::inf, -sr::inf, std::numeric_limits<double>::quiet_NaN()}) {
+        rejects_invalid([&] { sr::SpatialGrid grid(ordinary, bad); });
+        rejects_invalid([&] { sr::SpatialGrid grid({}, bad); });
+    }
+    rejects_invalid([&] { sr::SpatialGrid grid(ordinary, 1e-300); });
+    // Finite endpoints whose subtraction overflows must fail before conversion.
+    const std::vector<Driver> wide = {{1, {-1e308, 0}, true}, {2, {1e308, 0}, true}};
+    rejects_invalid([&] { sr::SpatialGrid grid(wide); });
+    rejects_invalid([&] { sr::SpatialGrid grid(wide, 1e308); });
+
+    // Each batch implementation must leave the entire state unchanged. The
+    // greedy cases reserve driver 10 for the first request before the second
+    // request encounters overflow, exercising rollback rather than just setup.
+    auto reject_batch = [](const std::vector<Driver>& initial,
+                           const std::vector<RideRequest>& requests) {
+        for (int algorithm = 0; algorithm < 3; ++algorithm) {
+            auto state = initial;
+            rejects_invalid([&] {
+                if (algorithm == 0) (void)sr::greedy_batch_brute_force(state, requests);
+                if (algorithm == 1) (void)sr::greedy_batch_spatial(state, requests);
+                if (algorithm == 2) (void)sr::hungarian_batch(state, requests);
+            });
+            for (size_t i = 0; i < state.size(); ++i) {
+                CHECK(state[i].available == initial[i].available);
+                CHECK(state[i].id == initial[i].id);
+                CHECK(state[i].position.x == initial[i].position.x);
+                CHECK(state[i].position.y == initial[i].position.y);
+            }
+        }
+    };
+    for (sr::Point far : {sr::Point{1e308, 0}, sr::Point{0, 1e308}}) {
+        std::vector<Driver> drivers = {{10, far, true}, {20, far, true}, {30, far, false}};
+        sr::Point opposite{-far.x, -far.y};
+        reject_batch(drivers, {{1, far}, {2, opposite}});
+        sr::SpatialGrid grid(drivers);
+        rejects_invalid([&] { (void)grid.nearest_driver(opposite); });
+        rejects_invalid([&] { (void)sr::nearest_driver(drivers, opposite); });
+    }
+    // Subtractions can be finite while hypot itself overflows.
+    reject_batch({{1, {0, 0}, true}}, {{1, {1.3e308, 1.3e308}}});
+
+    // All individual costs are finite, but the Hungarian dual objective can
+    // overflow. It must reject, not loop or commit a partial assignment.
+    std::vector<Driver> costly = {{1, {0, 0}, true}, {2, {0, 0}, true}};
+    rejects_invalid([&] { (void)sr::hungarian_batch(costly,
+        {{1, {1e308, 0}}, {2, {1e308, 0}}}); });
+    CHECK(costly[0].available && costly[1].available);
+
+    // Large but representable distances remain supported, including clamping
+    // an overflowing cell quotient before integer conversion.
+    for (int algorithm = 0; algorithm < 3; ++algorithm) {
+        std::vector<Driver> state = {{7, {0, 0}, true}};
+        const std::vector<RideRequest> request = {{9, {1e308, 0}}};
+        auto result = algorithm == 0 ? sr::greedy_batch_brute_force(state, request)
+                    : algorithm == 1 ? sr::greedy_batch_spatial(state, request, 1e-300)
+                    : sr::hungarian_batch(state, request);
+        CHECK(result[0].driver_id == 7 && result[0].pickup_distance == 1e308);
+        CHECK(!state[0].available);
+    }
+    std::vector<Driver> unavailable = {{1, {1e308, 0}, false}};
+    sr::SpatialGrid grid(unavailable);
+    CHECK(grid.nearest_driver({-1e308, 0}) == sr::invalid);
+    CHECK(sr::nearest_driver(unavailable, {-1e308, 0}) == sr::invalid);
+    CHECK(sr::hungarian_batch(unavailable, {{1, {-1e308, 0}}})[0].driver_id == sr::invalid);
+}
+
 // Independent replay checks the greedy rule and reservation state, in addition
 // to comparing the production brute-force oracle with SpatialGrid.
 void compare_batch(const std::vector<sr::Driver>& initial,
@@ -455,6 +548,7 @@ void hungarian_tests() {
 
 int main() {
     try {
+        numeric_boundary_tests();
         // 1. Empty driver set
         {
             std::vector<sr::Driver> empty;

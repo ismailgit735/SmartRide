@@ -1,0 +1,11 @@
+Test project /Users/rmohamedismail/SmartRide/build-priority1-ubsan
+    Start 1: correctness
+1/3 Test #1: correctness ......................   Passed    1.41 sec
+    Start 2: routing
+2/3 Test #2: routing ..........................   Passed    2.30 sec
+    Start 3: matching
+3/3 Test #3: matching .........................   Passed    1.37 sec
+
+100% tests passed out of 3
+
+Total Test time (real) =   5.08 sec

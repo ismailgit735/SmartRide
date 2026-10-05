@@ -3,6 +3,8 @@
 #include <cstddef>
 namespace sr {
 struct Driver { uint32_t id; Point position; bool available=true; };
+// Coordinates must be finite. Nonfinite evaluated pickup distances throw
+// invalid_argument; an unavailable driver has no pickup cost to evaluate.
 uint32_t nearest_driver(const std::vector<Driver>& drivers, Point request);
 std::vector<Driver> simulate_drivers(size_t count, const Graph& g, uint64_t seed);
 
@@ -14,7 +16,9 @@ struct Assignment {
 };
 // Process requests in supplied order, reserving winners immediately. IDs must
 // be unique within each input and not invalid; coordinates must be finite.
-// Validation completes before availability changes. Unmatched: invalid/inf.
+// Input validation completes before availability changes. If evaluated pickup
+// arithmetic overflows, invalid_argument is thrown and reservations from this
+// call are rolled back. Unmatched: invalid/inf.
 // Distances are Euclidean; these APIs are single-threaded.
 std::vector<Assignment> greedy_batch_brute_force(
     std::vector<Driver>& drivers, const std::vector<RideRequest>& requests);
@@ -37,10 +41,16 @@ struct HungarianOptions {
 // drivers; options may only tighten those caps. Oversized batches throw before
 // mutation. The complete matching is computed before any reservation. Unmatched
 // results use invalid/inf. No greedy fallback. Single-threaded; Euclidean cost.
+// Nonfinite costs or solver arithmetic throw invalid_argument before mutation.
 std::vector<Assignment> hungarian_batch(
     std::vector<Driver>& drivers, const std::vector<RideRequest>& requests,
     HungarianOptions options = {});
 
+// The driver vector must outlive the grid; its size, order, IDs and positions
+// must remain unchanged. Only availability may change, single-threadedly.
+// Coordinates must be finite; cell_size must be finite and nonnegative (0=auto).
+// Invalid inputs/dimensions or nonfinite evaluated pickup costs throw
+// invalid_argument, including invalid queries on an empty grid.
 class SpatialGrid {
     const std::vector<Driver>& drivers_;
     double min_x_ = 0, min_y_ = 0;
