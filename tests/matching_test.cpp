@@ -664,21 +664,29 @@ int main() {
             }
         }
 
-        // 10. Real Estonia road network driver simulation if graph file exists
-        if (std::filesystem::exists("data/estonia.srg")) {
-            sr::Graph g = sr::Graph::load("data/estonia.srg");
-            auto drivers = sr::simulate_drivers(100000, g, 42);
-            sr::SpatialGrid grid(drivers);
-            CHECK(drivers.size() == 100000);
-            for (size_t q = 0; q < 20; ++q) {
-                sr::Point p = g.points[rng() % g.points.size()];
-                uint32_t ref = sr::nearest_driver(drivers, p);
-                uint32_t got = grid.nearest_driver(p);
-                CHECK(ref == got);
-            }
-        } else {
-            std::cout << "SKIP: optional Estonia fixture unavailable in working directory\n";
+        // 10. Estonia fixture. CMake passes the source root so CTest's build-directory
+        // working directory cannot hide a missing or misplaced map.
+#ifdef SMARTRIDE_SOURCE_DIR
+        const std::filesystem::path estonia = std::filesystem::path(SMARTRIDE_SOURCE_DIR) / "data" / "estonia.srg";
+#else
+        const std::filesystem::path estonia = std::filesystem::path("data") / "estonia.srg";
+#endif
+        if (!std::filesystem::is_regular_file(estonia))
+            throw std::runtime_error("Estonia fixture not found: " + estonia.string());
+        sr::Graph g = sr::Graph::load(estonia.string());
+        auto drivers = sr::simulate_drivers(100000, g, 42);
+        sr::SpatialGrid grid(drivers);
+        CHECK(drivers.size() == 100000);
+        CHECK(g.points.size() > 1000000);
+        CHECK(g.edges.size() > 1000000);
+        for (size_t q = 0; q < 20; ++q) {
+            sr::Point p = g.points[rng() % g.points.size()];
+            uint32_t ref = sr::nearest_driver(drivers, p);
+            uint32_t got = grid.nearest_driver(p);
+            CHECK(ref == got);
         }
+        std::cout << "Estonia matching fixture passed: " << estonia.string()
+                  << " nodes=" << g.points.size() << " directed_edges=" << g.edges.size() << '\n';
         batch_tests();
         hungarian_tests();
 

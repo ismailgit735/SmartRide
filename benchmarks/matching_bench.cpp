@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -147,16 +148,19 @@ BenchmarkResult run_benchmark(const sr::Graph& g, size_t driver_count, size_t qu
 
 int main(int argc, char** argv) {
     try {
-        std::string map_path = (argc > 1) ? argv[1] : "data/estonia.srg";
-        sr::Graph g;
-        try {
-            std::cout << "Loading road network from: " << map_path << "..." << std::endl;
-            g = sr::Graph::load(map_path);
-            std::cout << "Loaded map: " << g.points.size() << " nodes, " << g.edges.size() << " directed edges.\n";
-        } catch (const std::exception& e) {
-            std::cout << "Could not load " << map_path << " (" << e.what() << "). Falling back to synthetic 500x500 grid.\n";
-            g = sr::Graph::grid(500);
-        }
+#ifdef SMARTRIDE_SOURCE_DIR
+        const std::string default_map = std::string(SMARTRIDE_SOURCE_DIR) + "/data/estonia.srg";
+#else
+        const std::string default_map = "data/estonia.srg";
+#endif
+        const std::string map_path = (argc > 1) ? argv[1] : default_map;
+        if (!std::filesystem::is_regular_file(map_path))
+            throw std::runtime_error("road graph not found: " + map_path);
+        std::cout << "Loading road network from: " << map_path << "..." << std::endl;
+        sr::Graph g = sr::Graph::load(map_path);
+        if (g.points.empty() || g.edges.empty())
+            throw std::runtime_error("road graph is empty: " + map_path);
+        std::cout << "Loaded map: " << g.points.size() << " nodes, " << g.edges.size() << " directed edges.\n";
 
         std::vector<size_t> driver_scales = {1000, 10000, 100000};
         constexpr size_t query_count = 2000;

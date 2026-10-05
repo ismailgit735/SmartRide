@@ -1,6 +1,7 @@
 #include "smartride/matching.hpp"
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
@@ -95,9 +96,17 @@ void run(const sr::Graph& graph, size_t count, size_t batch_size, bool depletion
 
 int main(int argc, char** argv) {
     try {
-        const std::string path = argc > 1 ? argv[1] : "data/estonia.srg";
-        auto graph = sr::Graph::load(path); // Fail explicitly; no synthetic fallback.
-        if (graph.points.empty()) throw std::runtime_error("empty benchmark graph");
+#ifdef SMARTRIDE_SOURCE_DIR
+        const std::string default_map = std::string(SMARTRIDE_SOURCE_DIR) + "/data/estonia.srg";
+#else
+        const std::string default_map = "data/estonia.srg";
+#endif
+        const std::string path = argc > 1 ? argv[1] : default_map;
+        if (!std::filesystem::is_regular_file(path))
+            throw std::runtime_error("road graph not found: " + path);
+        auto graph = sr::Graph::load(path);
+        if (graph.points.empty() || graph.edges.empty())
+            throw std::runtime_error("road graph is empty: " + path);
         std::cout << "# Greedy batch matching: brute-force oracle vs SpatialGrid\n\n"
             << "Map: " << path << "; nodes=" << graph.points.size() << "; directed_edges=" << graph.edges.size()
             << "\nCompiler: " << __VERSION__ << "; C++=" << __cplusplus
