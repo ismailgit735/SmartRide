@@ -1,0 +1,19 @@
+# Routing benchmark: Dijkstra, A*, bidirectional A*
+
+Map: /Users/rmohamedismail/SmartRide/data/estonia.srg; nodes=1328518; directed_edges=2671028
+Compiler: Apple LLVM 17.0.0 (clang-1700.6.3.2); C++=201703
+Seed: 918273; distinct uniform node pairs via mt19937_64 modulo node count.
+Queries: 100; reachable by Dijkstra: 88
+Correctness ran before timing. A* and bidirectional A* distances must match Dijkstra
+within abs(delta) < 1e-7 * max(1, reference), and valid_route must accept every path.
+Router construction is excluded from query latency: 13.654 ms.
+Each algorithm is warmed with the first 10 pairs. Warmup is excluded from the sample.
+Timed calls rotate which algorithm runs first. Latency is the query call only.
+Percentile index is floor(p * n). Queries/sec uses the sum of per-query latencies.
+Successful queries are those that passed the oracle. A mismatch aborts before this file is written.
+
+| Algorithm | Queries | Successful | Reachable | p50 ms | p95 ms | p99 ms | Mean ms | Queries/sec |
+|---|---|---|---|---|---|---|---|---|
+| Dijkstra | 100 | 100 | 88 | 45.173 | 93.545 | 103.614 | 46.334 | 21.582 |
+| A* | 100 | 100 | 88 | 11.321 | 75.479 | 117.980 | 20.959 | 47.711 |
+| Bidirectional A* | 100 | 100 | 88 | 21.433 | 111.115 | 157.635 | 31.773 | 31.474 |
