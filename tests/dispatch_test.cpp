@@ -4,6 +4,7 @@
 #include <limits>
 #include <random>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -210,6 +211,111 @@ void repeated_batches() {
     for (const auto& result : third) CHECK(result.status == sr::DispatchStatus::Assigned);
 }
 
+void check_cycle(const sr::Dispatcher& dispatcher,
+                  const std::vector<sr::DispatchResult>& results,
+                  const std::unordered_map<uint32_t, int>& submitted,
+                  size_t drivers_n) {
+    size_t recorded = 0;
+    for (const auto& count : submitted) recorded += size_t(count.second);
+    CHECK(results.size() == recorded);
+    std::unordered_map<uint32_t, int> seen;
+    std::unordered_set<uint32_t> reserved_now;
+    size_t assigned = 0;
+    for (const auto& result : results) {
+        const uint32_t request_id = result.assignment.request_id;
+        CHECK(submitted.count(request_id) == 1);
+        ++seen[request_id];
+        if (result.status == sr::DispatchStatus::Duplicate ||
+            result.status == sr::DispatchStatus::Unmatched ||
+            result.status == sr::DispatchStatus::Rejected) {
+            CHECK(result.assignment.driver_id == sr::invalid);
+            continue;
+        }
+        CHECK(result.status == sr::DispatchStatus::Assigned);
+        const uint32_t driver_id = result.assignment.driver_id;
+        CHECK(driver_id >= 1 && driver_id <= drivers_n);
+        CHECK(std::isfinite(result.assignment.pickup_distance));
+        CHECK(reserved_now.insert(driver_id).second);
+        CHECK(dispatcher.state_of(driver_id) == sr::DriverState::Reserved);
+        ++assigned;
+    }
+    CHECK(assigned == reserved_now.size());
+    CHECK(assigned <= drivers_n);
+    for (const auto& item : submitted) CHECK(seen[item.first] == item.second);
+    size_t reserved_state = 0;
+    for (uint32_t id = 1; id <= drivers_n; ++id)
+        reserved_state += dispatcher.state_of(id) == sr::DriverState::Reserved;
+    CHECK(reserved_state == assigned);
+}
+
+void contention_reuse_cycles() {
+    constexpr size_t kDrivers = 4;
+    constexpr unsigned kWorkers = 8;
+    constexpr int kSubmitters = 4;
+    constexpr int kCycles = 12;
+    constexpr uint32_t kRequestsPerCycle = 48;
+    constexpr int kExtraDuplicates = 8;
+    constexpr uint64_t kSeed = 918273;
+    std::cout << "contention cycles: drivers=" << kDrivers
+              << " workers=" << kWorkers << " submitters=" << kSubmitters
+              << " cycles=" << kCycles << " requests_per_cycle=" << kRequestsPerCycle
+              << " extra_duplicates=" << kExtraDuplicates << " seed=" << kSeed << '\n';
+    sr::Dispatcher dispatcher(fleet(kDrivers, {0, 0}, 1), kWorkers);
+    std::mt19937_64 rng(kSeed);
+    uint32_t next_id = 0;
+    for (int cycle = 0; cycle < kCycles; ++cycle) {
+        for (uint32_t id = 1; id <= kDrivers; ++id)
+            CHECK(dispatcher.state_of(id) == sr::DriverState::Available);
+        std::vector<sr::RideRequest> requests;
+        requests.reserve(kRequestsPerCycle);
+        for (uint32_t i = 0; i < kRequestsPerCycle; ++i) {
+            requests.push_back({next_id++, {double(rng() % 20), double(rng() % 3)}});
+        }
+        const uint32_t duplicated = requests.front().id;
+        std::unordered_map<uint32_t, int> submitted;
+        for (const auto& request : requests) submitted[request.id] = 1;
+        submitted[duplicated] += kExtraDuplicates;
+
+        std::vector<std::thread> submitters;
+        for (int producer = 0; producer < kSubmitters; ++producer) {
+            submitters.emplace_back([&, producer] {
+                for (uint32_t i = uint32_t(producer); i < kRequestsPerCycle; i += uint32_t(kSubmitters))
+                    dispatcher.submit(requests[i]);
+                for (int extra = 0; extra < kExtraDuplicates / kSubmitters; ++extra)
+                    dispatcher.submit({duplicated, {1, 1}});
+            });
+        }
+        for (auto& submitter : submitters) submitter.join();
+
+        auto results = dispatcher.drain();
+        check_cycle(dispatcher, results, submitted, kDrivers);
+        size_t assigned = 0;
+        for (const auto& result : results)
+            assigned += result.status == sr::DispatchStatus::Assigned;
+        CHECK(assigned == kDrivers);
+        for (uint32_t id = 1; id <= kDrivers; ++id) {
+            CHECK(dispatcher.state_of(id) == sr::DriverState::Reserved);
+            CHECK(dispatcher.release(id));
+            CHECK(dispatcher.state_of(id) == sr::DriverState::Available);
+            CHECK(!dispatcher.release(id));
+        }
+    }
+
+    constexpr uint32_t kShutdownBatch = 16;
+    std::unordered_map<uint32_t, int> shutdown_ids;
+    for (uint32_t i = 0; i < kShutdownBatch; ++i) {
+        dispatcher.submit({next_id, {double(i), 0}});
+        shutdown_ids[next_id++] = 1;
+    }
+    dispatcher.shutdown();
+    auto drained = dispatcher.drain();
+    check_cycle(dispatcher, drained, shutdown_ids, kDrivers);
+    bool rejected = false;
+    try { dispatcher.submit({next_id, {0, 0}}); }
+    catch (const std::runtime_error&) { rejected = true; }
+    CHECK(rejected);
+}
+
 void stress() {
     constexpr size_t drivers_n = 64;
     constexpr uint32_t requests_n = 4000;
@@ -254,6 +360,7 @@ int main() {
         rejected_request_keeps_working();
         shutdown_drains_and_rejects();
         repeated_batches();
+        contention_reuse_cycles();
         stress();
         std::cout << "dispatch tests passed\n";
         return 0;
