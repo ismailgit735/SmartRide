@@ -1,4 +1,5 @@
 #include "smartride/dispatch.hpp"
+#include "smartride/wal.hpp"
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -10,7 +11,10 @@ bool finite_point(Point p) {
 }
 }
 
-Dispatcher::Dispatcher(std::vector<DispatchDriver> drivers, unsigned workers) {
+Dispatcher::Dispatcher(std::vector<DispatchDriver> drivers, unsigned workers)
+    : Dispatcher(std::move(drivers), workers, std::string()) {}
+
+Dispatcher::Dispatcher(std::vector<DispatchDriver> drivers, unsigned workers, const std::string& wal_path) {
     if (workers == 0) throw std::invalid_argument("dispatcher needs at least one worker");
     drivers_.reserve(drivers.size());
     states_.reset(new std::atomic<unsigned char>[drivers.size()]);
@@ -24,6 +28,15 @@ Dispatcher::Dispatcher(std::vector<DispatchDriver> drivers, unsigned workers) {
             throw std::invalid_argument("invalid driver state");
         drivers_.push_back(Slot{driver.id, driver.position});
         states_[i].store(static_cast<unsigned char>(driver.state), std::memory_order_relaxed);
+    }
+    if (!wal_path.empty()) {
+        wal_.reset(new WriteAheadLog(wal_path));
+        const WalReplay replay = wal_->replay(drivers);
+        for (size_t i = 0; i < drivers_.size(); ++i) {
+            const bool reserved = replay.reserved_request.count(drivers_[i].id) != 0;
+            states_[i].store(static_cast<unsigned char>(reserved ? DriverState::Reserved : DriverState::Available),
+                std::memory_order_relaxed);
+        }
     }
     threads_.reserve(workers);
     try {
@@ -79,10 +92,29 @@ void Dispatcher::shutdown() {
     joined_.store(true);
 }
 
+void Dispatcher::testing_fail_next_appends(int count) {
+    if (!wal_) throw std::invalid_argument("dispatcher has no wal");
+    wal_->testing_fail_next_appends(count);
+}
+
+void Dispatcher::testing_arm(WalTestPoint point) {
+    if (!wal_) throw std::invalid_argument("dispatcher has no wal");
+    wal_->testing_arm(point);
+}
+
 bool Dispatcher::release(uint32_t driver_id) {
-    auto& state = states_[index_of(driver_id)];
+    const size_t index = index_of(driver_id);
+    std::unique_lock<std::mutex> commit(commit_mu_, std::defer_lock);
+    if (wal_) commit.lock();
+    auto& state = states_[index];
+    if (wal_) {
+        if (state.load(std::memory_order_acquire) != static_cast<unsigned char>(DriverState::Reserved))
+            return false;
+        // Durable release is recorded while the driver is still Reserved, so a
+        // crash cannot acknowledge the release without the record.
+        wal_->append_release(driver_id);
+    }
     unsigned char expected = static_cast<unsigned char>(DriverState::Reserved);
-    // Reserved -> Available. Fails if the driver is not currently reserved.
     return state.compare_exchange_strong(expected,
         static_cast<unsigned char>(DriverState::Available),
         std::memory_order_acq_rel, std::memory_order_acquire);
@@ -114,18 +146,39 @@ DispatchResult Dispatcher::match(const RideRequest& request) {
         if (chosen == invalid)
             return DispatchResult{Assignment{request.id}, DispatchStatus::Unmatched};
         const size_t index = index_.at(chosen);
+        std::unique_lock<std::mutex> commit(commit_mu_, std::defer_lock);
+        if (wal_) commit.lock();
         unsigned char expected = static_cast<unsigned char>(DriverState::Available);
         // Linearization point. Exactly one compare-and-swap can change this
         // driver from Available to Reserved. The caller that observes success
         // owns the reservation; every other caller fails and retries.
+        // With a WAL, the commit lock is held until fsync returns, and Assigned
+        // is reported only after that durability boundary.
         if (!states_[index].compare_exchange_strong(expected,
                 static_cast<unsigned char>(DriverState::Reserved),
                 std::memory_order_acq_rel, std::memory_order_acquire))
             continue;
+        const double pickup = distance(drivers_[index].position, request.pickup);
+        if (!std::isfinite(pickup)) {
+            unsigned char reserved = static_cast<unsigned char>(DriverState::Reserved);
+            states_[index].compare_exchange_strong(reserved,
+                static_cast<unsigned char>(DriverState::Available),
+                std::memory_order_acq_rel, std::memory_order_acquire);
+            return DispatchResult{Assignment{request.id}, DispatchStatus::Rejected};
+        }
         try {
-            const double pickup = distance(drivers_[index].position, request.pickup);
-            if (!std::isfinite(pickup)) throw std::runtime_error("nonfinite pickup");
+            // append_assignment returns only after fsync. Do not roll the
+            // reservation back after this point: the record is durable.
+            if (wal_) wal_->append_assignment(request.id, chosen);
             return DispatchResult{Assignment{request.id, chosen, pickup}, DispatchStatus::Assigned};
+        } catch (const WalFailure& failure) {
+            if (!failure.bytes_written()) {
+                unsigned char reserved = static_cast<unsigned char>(DriverState::Reserved);
+                states_[index].compare_exchange_strong(reserved,
+                    static_cast<unsigned char>(DriverState::Available),
+                    std::memory_order_acq_rel, std::memory_order_acquire);
+            }
+            return DispatchResult{Assignment{request.id}, DispatchStatus::PersistenceFailed};
         } catch (...) {
             unsigned char reserved = static_cast<unsigned char>(DriverState::Reserved);
             states_[index].compare_exchange_strong(reserved,
