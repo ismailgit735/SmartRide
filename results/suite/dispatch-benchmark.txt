@@ -1,0 +1,41 @@
+# Concurrent dispatch benchmark
+
+No road graph and no WAL. Driver i is at (i, 0). Pickup cost is Euclidean and is not a routed trip.
+Compiler: Apple LLVM 17.0.0 (clang-1700.6.3.2); C++=201703
+Seed: none. Positions and request ids are deterministic.
+A discarded 4-driver dispatcher drains 8 requests once before the contention sample. That drain is not timed.
+Serial latency excludes its first 8 submit/drain/release cycles. Throughput rounds have no warmup.
+
+Latency, serial column: one idle dispatcher, 1 worker, 64 samples.
+Each sample is submit() through drain() for one request. It includes queue wait, nearest-driver matching, and result publication.
+It excludes release() and excludes WAL fsync. Percentile index is floor(p * n).
+Throughput rows: 8 rounds of 64 requests on 64 drivers.
+Each request i in a round is submitted at (i, 0), colocated with driver i+1.
+Round time is the first submit() through drain(). It includes queue wait, matching, and result publication.
+release() runs after the timed drain and is not included. No WAL.
+Assignments/sec uses the sum of round times and counts only Assigned results.
+A duplicate driver, unexpected status, or wrong assignment count aborts before this file is written.
+
+Contention: 8 workers, 4 drivers, 64 requests, all pickups at (0, 0), no release during the wave.
+Contention wall time: 0.093 ms. Assigned: 4. Unmatched: 60.
+
+Serial submit-to-drain: p50 0.008 ms; p95 0.009 ms; p99 0.018 ms; mean 0.008 ms.
+
+| Workers | Drivers | Rounds | Requests/round | Assigned | Round sum ms | Assignments/sec |
+|---|---|---|---|---|---|---|
+| 1 | 64 | 8 | 64 | 512 | 0.557 | 918524.047 |
+| 4 | 64 | 8 | 64 | 512 | 0.582 | 879790.088 |
+| 8 | 64 | 8 | 64 | 512 | 0.553 | 926209.001 |
+
+# Suite metadata
+git_commit: e3c4cc9378e75b90218926a4e6a95a4d5a6c5b54
+git_worktree: dirty
+build_type: Release
+timestamp_utc: 2026-10-06T06:24:47Z
+platform: Darwin 25.5.0 arm64
+warmup_policy: stated in this result file; warmup samples are excluded from reported latencies
+cmake:
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=/usr/bin/c++
+CMAKE_CXX_FLAGS:STRING=
+CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG

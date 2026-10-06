@@ -1,0 +1,43 @@
+# Hungarian vs greedy batch matching
+
+Map: /Users/rmohamedismail/SmartRide/data/estonia.srg; nodes=1328518; directed_edges=2671028
+Compiler: Apple LLVM 17.0.0 (clang-1700.6.3.2); C++=201703
+Seeds: driver=42, request=1234567; 2000 requests sliced into reset batches.
+Requests and drivers are simulated on OSM nodes; pickup cost is Euclidean meters.
+Availability is restored before each batch. Hungarian uses all available drivers in the snapshot.
+Times include complete API setup/teardown; exclude input reset, request slicing, and verification.
+Percentiles are batch latency in milliseconds. Alternate algorithm timing order per batch.
+Cardinality and Hungarian total pickup <= greedy total are checked outside timing.
+Initial engineering target: p95 <= 10 ms for 32 requests x 256 drivers in Release.
+
+| Requests | Available drivers | Samples | Greedy p50/p95/p99 ms | Hungarian p50/p95/p99 ms | Matched/unmatched | Greedy mean pickup m | Hungarian mean pickup m | Greedy/Hungarian time | Verified |
+|---|---|---|---|---|---|---|---|---|---|
+| 8 | 32 | 250 | 0.002/0.002/0.002 | 0.003/0.004/0.006 | 2000/0 | 25185.943 | 24053.179 | 0.662 | 2000/2000 |
+| 8 | 128 | 250 | 0.006/0.007/0.007 | 0.008/0.009/0.010 | 2000/0 | 8855.357 | 8792.444 | 0.811 | 2000/2000 |
+| 8 | 256 | 250 | 0.012/0.012/0.013 | 0.014/0.015/0.016 | 2000/0 | 5966.583 | 5942.667 | 0.837 | 2000/2000 |
+| 8 | 512 | 250 | 0.023/0.026/0.028 | 0.027/0.030/0.033 | 2000/0 | 4160.381 | 4156.781 | 0.848 | 2000/2000 |
+| 16 | 32 | 125 | 0.004/0.004/0.004 | 0.005/0.007/0.009 | 2000/0 | 28909.124 | 26621.315 | 0.620 | 2000/2000 |
+| 16 | 128 | 125 | 0.010/0.010/0.010 | 0.012/0.014/0.015 | 2000/0 | 9098.417 | 8941.961 | 0.796 | 2000/2000 |
+| 16 | 256 | 125 | 0.018/0.020/0.021 | 0.021/0.024/0.026 | 2000/0 | 6041.600 | 5996.272 | 0.815 | 2000/2000 |
+| 16 | 512 | 125 | 0.033/0.036/0.038 | 0.040/0.046/0.047 | 2000/0 | 4178.156 | 4165.649 | 0.814 | 2000/2000 |
+| 32 | 32 | 63 | 0.006/0.006/0.007 | 0.030/0.040/0.045 | 2000/0 | 48904.878 | 38915.433 | 0.191 | 2000/2000 |
+| 32 | 128 | 63 | 0.017/0.019/0.020 | 0.023/0.027/0.030 | 2000/0 | 9608.214 | 9245.787 | 0.733 | 2000/2000 |
+| 32 | 256 | 63 | 0.029/0.035/0.041 | 0.038/0.042/0.044 | 2000/0 | 6199.484 | 6092.247 | 0.784 | 2000/2000 |
+| 32 | 512 | 63 | 0.055/0.058/0.062 | 0.069/0.073/0.076 | 2000/0 | 4224.897 | 4197.930 | 0.802 | 2000/2000 |
+| 64 | 32 | 32 | 0.006/0.007/0.007 | 0.020/0.025/0.029 | 1008/992 | 49468.388 | 15465.930 | 0.316 | 2000/2000 |
+| 64 | 128 | 32 | 0.031/0.037/0.037 | 0.054/0.063/0.067 | 2000/0 | 11309.005 | 10421.635 | 0.590 | 2000/2000 |
+| 64 | 256 | 32 | 0.054/0.057/0.060 | 0.075/0.090/0.093 | 2000/0 | 6650.648 | 6394.272 | 0.704 | 2000/2000 |
+| 64 | 512 | 32 | 0.099/0.104/0.107 | 0.128/0.137/0.144 | 2000/0 | 4375.578 | 4272.880 | 0.780 | 2000/2000 |
+
+# Suite metadata
+git_commit: e3c4cc9378e75b90218926a4e6a95a4d5a6c5b54
+git_worktree: dirty
+build_type: Release
+timestamp_utc: 2026-10-06T06:24:47Z
+platform: Darwin 25.5.0 arm64
+warmup_policy: stated in this result file; warmup samples are excluded from reported latencies
+cmake:
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=/usr/bin/c++
+CMAKE_CXX_FLAGS:STRING=
+CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG

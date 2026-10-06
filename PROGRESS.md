@@ -164,3 +164,11 @@ occur during setup before reservations. Large-batch p95/p99 values have only two
 samples per row and are descriptive, not reliable tail estimates. These full-API
 batch results are distinct from the 4A nearest-query benchmark (409.4x); its
 benchmark source and saved results were preserved. No 4B requirement is blocked.
+
+## Benchmark suite
+
+`scripts/run_benchmarks.sh` builds Release, runs CTest, and writes a new set of
+results under `results/suite/`. Reproduction steps are in `BENCHMARKS.md`.
+Earlier files in `results/` are not replaced by that script. The suite does not
+add a million-request workload. Dispatch timing is synthetic coordinates, not
+routed trips. WAL append timing is one record plus its own `fsync`.

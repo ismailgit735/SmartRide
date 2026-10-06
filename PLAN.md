@@ -27,6 +27,10 @@
   throughput, memory and preprocessing, real-map vs synthetic labels;
   million-request stress if machine supports it; raw results/seeds/hardware/
   exact commands; sanitizer results separately recorded.
+  - [x] 7A: `scripts/run_benchmarks.sh` writes a Release CTest-gated suite to
+    `results/suite/` without replacing earlier `results/*.txt` evidence.
+    Dispatch and WAL latencies name their boundaries. Million-request stress
+    was not run.
 - [ ] 8. Delivery: complete source, automated build/test/benchmark scripts,
   README, architecture, tables/plots, technical report, measured resume bullets.
 

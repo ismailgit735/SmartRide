@@ -197,11 +197,12 @@ int main(int argc, char** argv) {
 
         std::cout << "\n" << out.str() << std::endl;
 
-        // Save raw output to results/matching-benchmark.txt
-        std::ofstream fout("results/matching-benchmark.txt");
+        const std::string result_path = argc > 2 ? argv[2] : "results/matching-benchmark.txt";
+        std::ofstream fout(result_path);
+        if (!fout) throw std::runtime_error("could not write " + result_path);
         fout << out.str();
-        fout.close();
-        std::cout << "Saved raw benchmark results to results/matching-benchmark.txt\n";
+        if (!fout) throw std::runtime_error("failed while writing " + result_path);
+        std::cout << "Saved raw benchmark results to " << result_path << '\n';
 
         return 0;
     } catch (const std::exception& e) {

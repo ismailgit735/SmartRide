@@ -1,0 +1,24 @@
+# SpatialGrid vs Brute-Force Nearest-Driver Benchmark
+
+Road network: 1328518 nodes, 2671028 directed edges
+Workload: 2000 random queries per scale; seeds: driver=42, query=1234567
+Timestamp: Oct  6 2026 11:54:40
+
+| Drivers | Grid Build (ms) | Brute p50 (us) | Brute p95 (us) | Brute p99 (us) | Brute (QPS) | Grid p50 (us) | Grid p95 (us) | Grid p99 (us) | Grid (QPS) | QPS Speedup | Correctness |
+|---------|-----------------|----------------|----------------|----------------|-------------|---------------|---------------|---------------|------------|-------------|-------------|
+|    1000 |            0.03 |           2.42 |           2.79 |           2.96 |      405186 |          0.17 |          0.38 |          0.54 |    5569743 |       13.7x | 100% match |
+|   10000 |            0.23 |          23.25 |          26.12 |          29.00 |       42263 |          0.17 |          0.62 |          1.75 |    3609561 |       85.4x | 100% match |
+|  100000 |            2.14 |         233.08 |         249.79 |         679.83 |        3720 |          0.46 |          2.12 |          4.62 |    1266123 |      340.4x | 100% match |
+
+# Suite metadata
+git_commit: e3c4cc9378e75b90218926a4e6a95a4d5a6c5b54
+git_worktree: dirty
+build_type: Release
+timestamp_utc: 2026-10-06T06:24:47Z
+platform: Darwin 25.5.0 arm64
+warmup_policy: stated in this result file; warmup samples are excluded from reported latencies
+cmake:
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=/usr/bin/c++
+CMAKE_CXX_FLAGS:STRING=
+CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG

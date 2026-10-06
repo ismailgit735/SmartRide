@@ -1,0 +1,24 @@
+# Benchmark suite index
+
+git_commit: e3c4cc9378e75b90218926a4e6a95a4d5a6c5b54
+git_worktree: dirty
+build_type: Release
+timestamp_utc: 2026-10-06T06:24:47Z
+platform: Darwin 25.5.0 arm64
+map: /Users/rmohamedismail/SmartRide/data/estonia.srg
+ctest: passed before benchmarks
+historical_results: results/*.txt outside results/suite/ were not modified
+
+routing: results/suite/routing-benchmark.txt
+contraction_hierarchy: results/suite/ch-benchmark.txt
+nearest_driver: results/suite/matching-benchmark.txt
+greedy_batch: results/suite/batch-matching-benchmark.txt
+hungarian: results/suite/hungarian-matching-benchmark.txt
+dispatch: results/suite/dispatch-benchmark.txt
+wal: results/suite/wal-benchmark.txt
+
+cmake:
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=/usr/bin/c++
+CMAKE_CXX_FLAGS:STRING=
+CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG

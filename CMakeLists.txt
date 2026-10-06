@@ -54,3 +54,7 @@ target_compile_definitions(routing_bench PRIVATE "SMARTRIDE_SOURCE_DIR=\"${CMAKE
 add_executable(ch_bench benchmarks/ch_bench.cpp)
 target_link_libraries(ch_bench PRIVATE smartride)
 target_compile_definitions(ch_bench PRIVATE "SMARTRIDE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+add_executable(dispatch_bench benchmarks/dispatch_bench.cpp)
+target_link_libraries(dispatch_bench PRIVATE smartride)
+add_executable(wal_bench benchmarks/wal_bench.cpp)
+target_link_libraries(wal_bench PRIVATE smartride)

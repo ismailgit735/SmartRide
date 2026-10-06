@@ -1,0 +1,37 @@
+# Contraction hierarchy benchmark
+
+Map: /Users/rmohamedismail/SmartRide/data/estonia.srg; nodes=1328518; directed_edges=2671028
+Compiler: Apple LLVM 17.0.0 (clang-1700.6.3.2); C++=201703
+Seed: 918273; distinct uniform node pairs via mt19937_64 modulo node count.
+Queries: 100; reachable by Dijkstra: 88
+Preprocessing wall time: 2406.885 ms.
+Shortcuts: 2312617.
+Process resident bytes before preprocessing: 338427904.
+Process resident bytes after preprocessing: 543719424.
+Process peak RSS bytes after preprocessing: 545423360 (Darwin getrusage ru_maxrss; this platform reports bytes).
+These figures are process RSS, not an isolated ContractionHierarchy byte count.
+ContractionHierarchy does not expose its own memory use.
+Correctness ran before timing. CH distances must match Dijkstra
+within abs(delta) < 1e-7 * max(1, reference), and valid_route must accept every path.
+Unreachable pairs agree when both distances are non-finite and the paths are empty.
+Warmup is the first 10 CH queries and is excluded from the sample.
+Latency is the CH query call only. Percentile index is floor(p * n).
+Queries/sec uses the sum of per-query latencies.
+Successful queries are those that passed the oracle. A mismatch aborts before this file is written.
+
+| Algorithm | Queries | Successful | Reachable | p50 ms | p95 ms | p99 ms | Mean ms | Queries/sec |
+|---|---|---|---|---|---|---|---|---|
+| Contraction hierarchy | 100 | 100 | 88 | 0.599 | 0.706 | 0.876 | 0.597 | 1675.512 |
+
+# Suite metadata
+git_commit: e3c4cc9378e75b90218926a4e6a95a4d5a6c5b54
+git_worktree: dirty
+build_type: Release
+timestamp_utc: 2026-10-06T06:24:47Z
+platform: Darwin 25.5.0 arm64
+warmup_policy: stated in this result file; warmup samples are excluded from reported latencies
+cmake:
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=/usr/bin/c++
+CMAKE_CXX_FLAGS:STRING=
+CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG

@@ -1,0 +1,42 @@
+# Greedy batch matching: brute-force oracle vs SpatialGrid
+
+Map: /Users/rmohamedismail/SmartRide/data/estonia.srg; nodes=1328518; directed_edges=2671028
+Compiler: Apple LLVM 17.0.0 (clang-1700.6.3.2); C++=201703
+Seeds: driver=42, request=1234567; 2000 requests per row.
+Requests and drivers are simulated on OSM nodes; pickup cost is Euclidean meters.
+reset: restore availability before each batch; deplete: carry reservations across batches.
+Times include complete API setup/teardown; exclude input reset, request slicing, and verification.
+Grid build is one separate construction sample. Percentiles are batch latency in milliseconds.
+Large batches have few samples: p95/p99 are descriptive, not stable tail estimates.
+All assignment IDs, distances, and final availability checked outside timing.
+
+| Drivers | Mode | Batch | Samples | Grid build ms | Brute p50/p95/p99 ms | Spatial p50/p95/p99 ms | Brute req/s | Spatial req/s | Speedup | Matched/unmatched | Total pickup m | Mean pickup m | Verified |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1000 | reset | 1 | 2000 | 0.033 | 0.026/0.029/0.032 | 0.047/0.051/0.054 | 37284.457 | 21023.888 | 0.564 | 2000/0 | 5606721.380 | 2803.361 | 2000/2000 |
+| 1000 | reset | 10 | 200 | 0.031 | 0.049/0.052/0.056 | 0.050/0.053/0.056 | 203167.627 | 200549.727 | 0.987 | 2000/0 | 5625346.235 | 2812.673 | 2000/2000 |
+| 1000 | reset | 100 | 20 | 0.031 | 0.280/0.294/0.294 | 0.069/0.080/0.080 | 356461.189 | 1441181.769 | 4.043 | 2000/0 | 5868961.723 | 2934.481 | 2000/2000 |
+| 1000 | reset | 1000 | 2 | 0.031 | 1.884/1.884/1.884 | 0.391/0.391/0.391 | 535224.603 | 2728821.954 | 5.098 | 2000/0 | 20747360.713 | 10373.680 | 2000/2000 |
+| 1000 | deplete | 1000 | 2 | 0.032 | 1.854/1.854/1.854 | 0.335/0.335/0.335 | 1051248.910 | 4883504.012 | 4.645 | 1000/1000 | 9079332.267 | 9079.332 | 2000/2000 |
+| 10000 | reset | 1 | 2000 | 0.237 | 0.264/0.280/0.290 | 0.462/0.485/0.503 | 3737.527 | 2152.755 | 0.576 | 2000/0 | 1475998.318 | 737.999 | 2000/2000 |
+| 10000 | reset | 10 | 200 | 0.214 | 0.480/0.505/0.515 | 0.463/0.486/0.494 | 20703.880 | 21497.504 | 1.038 | 2000/0 | 1476928.085 | 738.464 | 2000/2000 |
+| 10000 | reset | 100 | 20 | 0.213 | 2.658/2.684/2.684 | 0.489/0.532/0.532 | 37642.100 | 203853.670 | 5.416 | 2000/0 | 1485031.635 | 742.516 | 2000/2000 |
+| 10000 | reset | 1000 | 2 | 0.211 | 24.964/24.964/24.964 | 0.767/0.767/0.767 | 40193.330 | 1316006.788 | 32.742 | 2000/0 | 1544564.512 | 772.282 | 2000/2000 |
+| 10000 | deplete | 1000 | 2 | 0.222 | 25.057/25.057/25.057 | 0.861/0.861/0.861 | 40855.028 | 1213408.160 | 29.700 | 2000/0 | 1635983.201 | 817.992 | 2000/2000 |
+| 100000 | reset | 1 | 2000 | 2.235 | 2.675/2.733/2.787 | 4.730/4.818/4.927 | 372.848 | 211.334 | 0.567 | 2000/0 | 304355.351 | 152.178 | 2000/2000 |
+| 100000 | reset | 10 | 200 | 2.155 | 4.804/4.872/4.943 | 4.731/4.807/4.864 | 2079.384 | 2110.988 | 1.015 | 2000/0 | 304355.351 | 152.178 | 2000/2000 |
+| 100000 | reset | 100 | 20 | 2.210 | 26.077/26.299/26.299 | 4.812/4.898/4.898 | 3833.183 | 20856.271 | 5.441 | 2000/0 | 304585.797 | 152.293 | 2000/2000 |
+| 100000 | reset | 1000 | 2 | 2.216 | 239.596/239.596/239.596 | 5.298/5.298/5.298 | 4175.076 | 189668.582 | 45.429 | 2000/0 | 305175.548 | 152.588 | 2000/2000 |
+| 100000 | deplete | 1000 | 2 | 2.151 | 241.718/241.718/241.718 | 5.378/5.378/5.378 | 4155.422 | 191395.967 | 46.059 | 2000/0 | 307340.701 | 153.670 | 2000/2000 |
+
+# Suite metadata
+git_commit: e3c4cc9378e75b90218926a4e6a95a4d5a6c5b54
+git_worktree: dirty
+build_type: Release
+timestamp_utc: 2026-10-06T06:24:47Z
+platform: Darwin 25.5.0 arm64
+warmup_policy: stated in this result file; warmup samples are excluded from reported latencies
+cmake:
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=/usr/bin/c++
+CMAKE_CXX_FLAGS:STRING=
+CMAKE_CXX_FLAGS_RELEASE:STRING=-O3 -DNDEBUG

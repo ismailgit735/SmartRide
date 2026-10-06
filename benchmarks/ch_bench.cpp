@@ -63,12 +63,13 @@ int main(int argc, char** argv) {
     try {
 #ifdef SMARTRIDE_SOURCE_DIR
         const std::string default_map = std::string(SMARTRIDE_SOURCE_DIR) + "/data/estonia.srg";
-        const std::string result_path = std::string(SMARTRIDE_SOURCE_DIR) + "/results/ch-benchmark.txt";
+        const std::string default_result = std::string(SMARTRIDE_SOURCE_DIR) + "/results/ch-benchmark.txt";
 #else
         const std::string default_map = "data/estonia.srg";
-        const std::string result_path = "results/ch-benchmark.txt";
+        const std::string default_result = "results/ch-benchmark.txt";
 #endif
         const std::string path = argc > 1 ? argv[1] : default_map;
+        const std::string result_path = argc > 2 ? argv[2] : default_result;
         if (!std::filesystem::is_regular_file(path))
             throw std::runtime_error("road graph not found: " + path);
         std::cerr << "Loading road network from: " << path << '\n';
