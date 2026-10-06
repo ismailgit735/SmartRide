@@ -1,0 +1,24 @@
+# Contraction hierarchy benchmark
+
+Map: /Users/rmohamedismail/SmartRide/data/estonia.srg; nodes=1328518; directed_edges=2671028
+Compiler: Apple LLVM 17.0.0 (clang-1700.6.3.2); C++=201703
+Seed: 918273; distinct uniform node pairs via mt19937_64 modulo node count.
+Queries: 100; reachable by Dijkstra: 88
+Preprocessing wall time: 2452.637 ms.
+Shortcuts: 2312617.
+Process resident bytes before preprocessing: 278233088.
+Process resident bytes after preprocessing: 515719168.
+Process peak RSS bytes after preprocessing: 544849920 (Darwin getrusage ru_maxrss; this platform reports bytes).
+These figures are process RSS, not an isolated ContractionHierarchy byte count.
+ContractionHierarchy does not expose its own memory use.
+Correctness ran before timing. CH distances must match Dijkstra
+within abs(delta) < 1e-7 * max(1, reference), and valid_route must accept every path.
+Unreachable pairs agree when both distances are non-finite and the paths are empty.
+Warmup is the first 10 CH queries and is excluded from the sample.
+Latency is the CH query call only. Percentile index is floor(p * n).
+Queries/sec uses the sum of per-query latencies.
+Successful queries are those that passed the oracle. A mismatch aborts before this file is written.
+
+| Algorithm | Queries | Successful | Reachable | p50 ms | p95 ms | p99 ms | Mean ms | Queries/sec |
+|---|---|---|---|---|---|---|---|---|
+| Contraction hierarchy | 100 | 100 | 88 | 0.638 | 0.782 | 0.958 | 0.642 | 1557.413 |

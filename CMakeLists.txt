@@ -45,3 +45,6 @@ target_compile_definitions(hungarian_matching_bench PRIVATE "SMARTRIDE_SOURCE_DI
 add_executable(routing_bench benchmarks/routing_bench.cpp)
 target_link_libraries(routing_bench PRIVATE smartride)
 target_compile_definitions(routing_bench PRIVATE "SMARTRIDE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+add_executable(ch_bench benchmarks/ch_bench.cpp)
+target_link_libraries(ch_bench PRIVATE smartride)
+target_compile_definitions(ch_bench PRIVATE "SMARTRIDE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
