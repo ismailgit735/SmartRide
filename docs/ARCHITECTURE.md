@@ -29,7 +29,11 @@ complete before any availability change. Options may only tighten the hard
 caps; oversized batches throw. Unmatched results use `invalid` and infinite
 distance. Pickup cost is straight-line meters, not routed pickup.
 
-## Planned routing invariants
+Dispatcher and WAL behavior are specified in the headers and summarized in
+the repository README. Matching APIs above are single-threaded. The dispatcher
+is a separate concurrent nearest-driver service; it does not call the routers.
+
+## Routing invariants
 
 A* uses a consistent scaled Euclidean lower bound. For bidirectional A*, use
 balanced potentials p(v)=(h(v,t)-h(s,v))/2 and reverse potential -p(v).
